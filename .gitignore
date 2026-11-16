@@ -1,0 +1,17 @@
+/target
+
+# Extensions build for wasm in workspaces of their own, so each has a `target`
+# of its own that the root's anchored rule above does not cover.
+extensions/*/target/
+crates/ext/tests/fixtures/*/target/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+
+# The comparative benchmark's instrument is built on the machine that runs it
+# (bench/run.sh does it), never committed: a binary from another macOS is a
+# different instrument.
+bench/measure
+bench/calibrate
+__pycache__/

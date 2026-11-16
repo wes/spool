@@ -1,0 +1,25 @@
+[extension]
+id = "inbox-stats"
+name = "Inbox Stats"
+version = "0.1.0"
+api = "0.2"
+description = "Counts unread mail and marks the messages that are taking up room."
+authors = ["Spool"]
+
+# Only what it uses. It never files or flags anything, so it never asks to —
+# and the host refuses to start it if the code ever drifts into wanting to.
+capabilities = ["read-mail", "ui", "notify"]
+
+# Both of these have to be live to do their job, so declaring them is also
+# what tells the host to start this extension with the app rather than on
+# first use.
+hooks = ["messages", "decorate"]
+
+[[commands]]
+id = "summarise"
+title = "Summarise unread mail"
+
+[[panels]]
+id = "stats"
+title = "Inbox Stats"
+glyph = "◔"

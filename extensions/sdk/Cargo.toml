@@ -1,0 +1,9 @@
+[package]
+name = "spool-extension"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Write a Spool extension in Rust."
+
+[dependencies]
+wit-bindgen = "0.61"

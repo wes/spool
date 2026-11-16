@@ -1,0 +1,25 @@
+# The IMAP server every client under test syncs from.
+#
+#   MAILDIR=~/spool-bench/maildir docker compose -f bench/dovecot/compose.yml up -d
+#
+# Port 10143 rather than 143 so it cannot collide with anything real on the
+# machine, and so a client configured against it is obviously configured
+# against the benchmark rather than against someone's mail.
+
+services:
+  dovecot:
+    build: .
+    image: spool-bench-dovecot
+    container_name: spool-bench-imap
+    ports:
+      - "127.0.0.1:10143:143"
+    volumes:
+      - ${MAILDIR:?set MAILDIR to the generated maildir}:/srv/mail
+      - ./dovecot.conf:/etc/dovecot/dovecot.conf:ro
+      - ./users:/etc/dovecot/users:ro
+    # The mounted Maildir belongs to the host user who generated it. Telling
+    # Dovecot to run mail processes as that uid avoids a recursive chown of a
+    # quarter of a million files on every start.
+    environment:
+      - TZ=UTC
+    restart: unless-stopped

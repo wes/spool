@@ -1,0 +1,18 @@
+# `cargo perf` — the benchmark harness, from anywhere in the repository.
+#
+# The harness is a binary in `target/`, not something on PATH, so typing
+# `spool-bench` gets you `command not found`. This is the shorthand:
+#
+#     cargo perf                     measure, compare, record
+#     cargo perf --report --open     write the history out as charts and open it
+#     cargo perf --suite parse --quick
+#
+# `--release` is baked in rather than left to be remembered. A debug build
+# measures a different program, and one debug run in the history poisons every
+# comparison after it — the harness refuses, but refusing after a minute of
+# waiting is a worse way to find out than not being able to ask.
+#
+# Not `cargo bench`: that is one of cargo's own commands, and an alias shadowing
+# a built-in is ignored rather than honoured.
+[alias]
+perf = "run --release --quiet -p spool-bench --"

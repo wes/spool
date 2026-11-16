@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the hardened runtime has to be asked to allow.
+
+  Exactly one thing, and it is here because of extensions. A component is
+  WebAssembly, and running it means compiling it to arm64 at load and jumping
+  into the result. The hardened runtime's whole point is that a signed app does
+  not execute code nobody signed, so without this the kernel kills the process
+  the instant wasmtime enters the code it just generated:
+
+      Exception Type:      EXC_BAD_ACCESS (SIGKILL (Code Signature Invalid))
+      Termination Reason:  Namespace CODESIGNING, Code 2, Invalid Page
+
+  It is `allow-unsigned-executable-memory` rather than `allow-jit` because of
+  how wasmtime maps that memory. `allow-jit` permits only regions mapped with
+  `MAP_JIT`, and wasmtime's unix backend uses an ordinary `mmap` followed by
+  `mprotect` to make it executable — which `allow-jit` does not cover. The
+  crash report shows it: the faulting page is a plain `VM_ALLOCATE r-x` region.
+
+  This is a real reduction in what the hardened runtime is protecting against,
+  and it applies to the whole process rather than to the extension host. It
+  buys running extensions at all. The alternative that does not need it is
+  wasmtime's Pulley interpreter, which executes WebAssembly without generating
+  native code at the cost of running it far slower; that is a decision about
+  the extension system rather than about packaging, and it is not made here.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

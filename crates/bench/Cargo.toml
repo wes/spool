@@ -1,0 +1,26 @@
+[package]
+name = "spool-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The harness is a binary, not `cargo bench`. `cargo bench` wants a benchmark
+# per target and gives back a number per run; this needs one process that
+# measures everything, fingerprints the machine, and appends a single record to
+# a history file — which is one program, not a convention.
+[[bin]]
+name = "spool-bench"
+path = "src/main.rs"
+
+# Only for `--example plan`, which asks SQLite what it intends to do about a
+# query. The harness itself never touches SQL: it measures the store through
+# the same API the app uses.
+[dev-dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[dependencies]
+spool-core.workspace = true
+spool-store.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

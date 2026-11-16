@@ -1,0 +1,15 @@
+# A test fixture, not an example to copy.
+#
+# It exists to prove that the host stops an extension that will not stop
+# itself: its one command never returns. Everything else in this repository is
+# written to work; this one is written to misbehave, so that the deadline has
+# something to be tested against.
+[extension]
+id = "runaway"
+name = "Runaway"
+api = "0.2"
+description = "Loops forever on purpose, so the deadline can be tested."
+
+[[commands]]
+id = "hang"
+title = "Never return"

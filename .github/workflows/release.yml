@@ -1,0 +1,170 @@
+# Builds a signed, notarized Spool disk image on GitHub's macOS machines, and
+# with `publish` on, posts it to the public releases repository with the
+# CHANGELOG.md section for its version as the notes.
+#
+# The usual way to release is scripts/release.sh, on a Mac, which does all of
+# this locally — see RELEASING.md. This is the same path on GitHub's hardware,
+# for when no Mac with the certificate is to hand.
+name: Release
+
+# Manual only. Releases are cut from a Mac with scripts/release.sh, which
+# builds, notarizes and publishes locally; this is the same thing on GitHub's
+# machines, kept for when that Mac is not to hand. A hosted macOS runner bills
+# its minutes at ten times the rate on a private repository, so a pushed tag
+# does not start one.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the releases repo (otherwise build only)"
+        type: boolean
+        default: false
+
+env:
+  RELEASES_REPO: wes/spool-releases
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: macos-latest
+    # Enough for a cold build of both architectures and two notarization
+    # attempts (see scripts/package.sh); a stall past that is not going to
+    # finish.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain step: rust-toolchain.toml pins the version and both
+      # targets, and rustup installs them on the first cargo invocation. The
+      # runner's preinstalled Rust is whatever its image shipped with, which
+      # is not something a release should depend on.
+
+      - uses: Swatinem/rust-cache@v2
+
+      # gpui compiles its shaders at build time. On Xcode 16 the Metal
+      # compiler is a separate component, and whether a runner image has
+      # already downloaded it is not something to find out on a tag.
+      - name: Ensure the Metal toolchain is present
+        run: |
+          xcrun -f metal >/dev/null 2>&1 \
+            || xcodebuild -downloadComponent MetalToolchain
+
+      # A throwaway environment rather than the machine's Python, which is
+      # externally-managed and refuses `pip install` without being told to
+      # break itself — and which, on a runner that is also somebody's Mac, is
+      # not this job's to install things into. First on PATH, so the
+      # `python3` the icon script runs is this one.
+      - name: Install Pillow, which draws the icon
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet pillow
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      # The certificate goes into a keychain created for this run and deleted
+      # with it. The runner's login keychain is shared with everything else on
+      # the machine and is unlocked by a password this job does not have.
+      - name: Import the Developer ID certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(uuidgen)
+
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          # Without this, codesign blocks on a GUI prompt for permission to use
+          # the key — on a machine with nobody to answer it.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" >/dev/null
+          # Remembered, because this changes the search list of the user the
+          # runner runs as — on a Mac that stays, not a VM that is thrown
+          # away — and the last step puts it back.
+          security list-keychains -d user > "$RUNNER_TEMP/keychains-before"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build, sign, notarize
+        env:
+          SPOOL_IDENTITY: ${{ secrets.SPOOL_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPOOL_GOOGLE_CLIENT_ID: ${{ secrets.SPOOL_GOOGLE_CLIENT_ID }}
+          SPOOL_GOOGLE_CLIENT_SECRET: ${{ secrets.SPOOL_GOOGLE_CLIENT_SECRET }}
+        run: scripts/package.sh
+
+      - name: Name the artifact
+        id: artifact
+        run: |
+          set -euo pipefail
+          dmg=$(ls target/Spool-*.dmg)
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+          echo "version=$(basename "$dmg" .dmg | sed 's/^Spool-//')" >> "$GITHUB_OUTPUT"
+
+      # Kept for a fortnight whatever happens, so a failed publish or a bad
+      # release is not also a lost build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spool-dmg
+          path: ${{ steps.artifact.outputs.path }}
+          retention-days: 14
+
+      # The tag says what to publish; CHANGELOG.md says what changed. Taking
+      # the notes from the file rather than the tag message means the entry
+      # has to exist before the release does.
+      - name: Extract the release notes
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        run: |
+          set -euo pipefail
+          version="${{ steps.artifact.outputs.version }}"
+          awk -v v="$version" '
+            $0 ~ "^## " v "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "No CHANGELOG.md section for $version." >&2
+            exit 1
+          fi
+
+      # `gh release create` on another repository creates the tag there too,
+      # against its default branch. The releases repo has no source to tag, so
+      # the tag is a label on the download and nothing more.
+      - name: Publish to the releases repo
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.artifact.outputs.version }}"
+          # A second copy under a fixed name, for the
+          # releases/latest/download/Spool.dmg link (see scripts/release.sh).
+          cp "${{ steps.artifact.outputs.path }}" target/Spool.dmg
+          gh release create "v$version" "${{ steps.artifact.outputs.path }}" target/Spool.dmg \
+            --repo "$RELEASES_REPO" \
+            --title "Spool $version" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --latest
+
+      # Whatever happened above: the signing keychain goes, and the machine's
+      # own keychain list is put back as it was. On a self-hosted runner the
+      # key would otherwise stay on the Mac after the job, in a keychain whose
+      # password nobody knows.
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [ -f "$RUNNER_TEMP/keychains-before" ]; then
+            # Each path was printed in double quotes, so eval hands them back
+            # as whole words, spaces and all.
+            eval "security list-keychains -d user -s $(tr '\n' ' ' < "$RUNNER_TEMP/keychains-before")"
+          fi
+          security delete-keychain "$keychain" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/keychains-before"

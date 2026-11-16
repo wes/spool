@@ -1,0 +1,20 @@
+# Its own workspace. The fixture lives inside the repository's tree but is
+# built for wasm and is not a member — an empty table here says so without
+# adding a line to the root manifest for something only one test uses.
+[workspace]
+
+[package]
+name = "runaway"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spool-extension = { path = "../../../../../extensions/sdk" }
+
+[profile.release]
+opt-level = "s"
+strip = true

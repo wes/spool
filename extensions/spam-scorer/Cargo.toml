@@ -1,0 +1,22 @@
+[package]
+name = "spam-scorer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+# A component, not an executable: the host instantiates it and calls its
+# exports rather than running a `main`.
+crate-type = ["cdylib"]
+
+[dependencies]
+spool-extension = { path = "../sdk" }
+
+# Jev speaks JSON, and the one thing worth not hand-rolling inside a sandbox is
+# a parser for somebody else's data.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+strip = true

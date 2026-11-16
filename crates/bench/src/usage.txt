@@ -1,0 +1,23 @@
+spool-bench — measure this commit, and say how it compares.
+
+    cargo perf                     measure, compare against last time, record
+    cargo perf --quick             a rougher, faster sweep for iterating
+    cargo perf --corpus 250000     a bigger mailbox (default 100,000)
+    cargo perf --suite parse       one suite: store, parse
+    cargo perf --no-save           measure without writing history
+    cargo perf --baseline clean    compare against the last committed run
+    cargo perf --baseline 9d2213f  compare against a particular commit
+    cargo perf --threshold 3       what counts as a change, in percent
+    cargo perf --show [N]          the recent history, measuring nothing
+    cargo perf --report [path]     write the history out as a page of charts
+    cargo perf --report --open     ...and open it
+    cargo perf --list              every benchmark id
+
+`cargo perf` is an alias in .cargo/config.toml — it works from anywhere in the
+repository and builds release, which is the only build worth measuring. The
+binary itself is target/release/spool-bench; `cargo install --path crates/bench`
+puts it on PATH if you would rather type `spool-bench`.
+
+History is one JSON object per run in bench/history/<machine>.jsonl, committed
+alongside the code. Runs are only ever compared with runs from the same machine
+at the same corpus size, because nothing else is comparable.

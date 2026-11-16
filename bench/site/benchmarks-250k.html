@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spool Benchmarks, 250k</title>
+<meta name="description" content="Spool against Apple Mail, MailMate, Thunderbird and Canary on the same 250,000-message mailbox, measured from the screen.">
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --faint: #a1a1a6;
+    --rule: #e6e6e3;
+    --track: #f0f0ee;
+    --spool: #3b6ef5;
+    --other: #b9b9bf;
+    --win: #1f8a4c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416;
+      --panel: #1c1c1f;
+      --text: #f2f2f4;
+      --muted: #a0a0a8;
+      --faint: #6c6c74;
+      --rule: #2c2c31;
+      --track: #26262b;
+      --spool: #6b93ff;
+      --other: #55555d;
+      --win: #4cc483;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416;
+    --panel: #1c1c1f;
+    --text: #f2f2f4;
+    --muted: #a0a0a8;
+    --faint: #6c6c74;
+    --rule: #2c2c31;
+    --track: #26262b;
+    --spool: #6b93ff;
+    --other: #55555d;
+    --win: #4cc483;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 56px 16px 80px; }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 12px; }
+  h2 { font-size: 22px; letter-spacing: -0.01em; margin: 56px 0 6px; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 19px; color: var(--muted); max-width: 640px; }
+  .small { font-size: 14px; color: var(--muted); }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: var(--spool); text-underline-offset: 2px; }
+
+  .headline {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px; margin: 32px 0 8px;
+  }
+  .stat { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 18px; }
+  .stat b { display: block; font-size: 30px; letter-spacing: -0.02em; }
+  .stat span { font-size: 14px; color: var(--muted); }
+
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin: 20px 0 4px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+
+  .metric { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 18px 14px; margin-top: 12px; }
+  .metric h3 { font-size: 16px; margin: 0; }
+  .metric .what { font-size: 14px; color: var(--muted); margin: 2px 0 12px; }
+  .row { display: grid; grid-template-columns: 96px 1fr 76px; align-items: center; gap: 10px; margin: 7px 0; }
+  .row .name { font-size: 14px; color: var(--muted); }
+  .row.spool .name { color: var(--text); font-weight: 600; }
+  .track { height: 12px; background: var(--track); border-radius: 6px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 6px; background: var(--other); }
+  .row.spool .bar { background: var(--spool); }
+  .row .value { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }
+  .row.best .value { color: var(--win); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 12px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; }
+  td.n { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+  th.n { text-align: right; }
+  .scroll-x { overflow-x: auto; }
+
+  ul { padding-left: 20px; margin: 0 0 14px; }
+  li { margin: 6px 0; }
+  footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--rule); }
+
+  @media (max-width: 520px) {
+    h1 { font-size: 32px; }
+    .row { grid-template-columns: 76px 1fr 64px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>How fast is Spool with 250,000 emails?</h1>
+  <p class="lede">Spool, Apple Mail, MailMate, Thunderbird and Canary on the same Mac, reading the same 250,000-message mailbox — 150,000 of them in the inbox — from the same local server. Every number is measured from the screen: the time from a click or keypress until the pixels stop changing.</p>
+
+  <div class="headline">
+    <div class="stat"><b>56 ms</b><span>to open a message</span></div>
+    <div class="stat"><b>134 ms</b><span>to search 250,000 messages</span></div>
+    <div class="stat"><b>0.32 s</b><span>from launch to a usable inbox</span></div>
+    <div class="stat"><b>39 s</b><span>to sync 250,000 messages</span></div>
+  </div>
+  <p class="small">Spool 0.1.11, Mac Studio (M1 Ultra), macOS 15.4. Lower is better throughout. Also: <a href="benchmarks.html">the same tests at 50,000 messages</a>.</p>
+
+  <div class="legend">
+    <span><i style="background:var(--spool)"></i>Spool 0.1.11</span>
+    <span><i style="background:var(--other)"></i>Apple Mail 16.0</span>
+    <span><i style="background:var(--other)"></i>MailMate 1.13.2</span>
+    <span><i style="background:var(--other)"></i>Thunderbird 158</span>
+    <span><i style="background:var(--other)"></i>Canary 5.26</span>
+  </div>
+
+  <div id="metrics"></div>
+
+  <h2>Spool from 50,000 to 250,000</h2>
+  <p>Five times the mail. Opening a message and moving to the next take the same time at both sizes; search, launch and quit grow with the mailbox, but slowly.</p>
+  <div class="scroll-x">
+    <table>
+      <thead><tr><th>Spool 0.1.11</th><th class="n">50,000</th><th class="n">250,000</th></tr></thead>
+      <tbody id="scale"></tbody>
+    </table>
+  </div>
+
+  <h2>How this was measured</h2>
+  <ul>
+    <li><strong>One mailbox for everyone.</strong> A generated mailbox of 250,000 messages (threads, lists, HTML and plain text) served by Dovecot over IMAP on the same Mac, so no client is helped or hurt by a network. Every client synced all of it before anything was measured.</li>
+    <li><strong>Measured from outside.</strong> A small tool posts a real mouse or keyboard event and watches the window through ScreenCaptureKit. It knows nothing about the app under test and needs no cooperation from it, which is the only way to put five different apps in one table.</li>
+    <li><strong>"Finished", not "started".</strong> Each time is from the event until the window stopped changing. An app that paints a spinner quickly and the message slowly gets the slow number.</li>
+    <li><strong>Medians.</strong> 20 runs for each action (10 for scroll, 5 for launch and quit), median reported. Same window size and position for every client.</li>
+    <li><strong>The instrument adds about 28 ms</strong> to every time, the same for every app: one or two frames of a 60 Hz display, plus capture. The fastest an action can measure here is around 45 ms.</li>
+    <li><strong>Memory</strong> is physical footprint, the number Activity Monitor shows, including the WebKit processes each client renders HTML mail in. <strong>Idle CPU</strong> is ten seconds of the client doing nothing, straight after the tests above. Apple Mail and Canary were both still working at that point — Apple Mail at a quarter of a core, Canary at more than one and a half — and the numbers say so rather than waiting until they stopped.</li>
+    <li><strong>Search</strong> includes typing the query (about 80 ms of it). MailMate searches when Return is pressed, so its time includes the Return. Thunderbird's Quick Filter, its search-as-you-type, looks at sender, recipients and subject by default but not the message body, which is less work than the others do; the rest search the full text.</li>
+    <li><strong>One client at a time.</strong> Each was the only mail client running while it was measured, after it had finished checking the server on launch.</li>
+    <li><strong>Each client as it ships,</strong> with two exceptions: Canary's Copilot panel was closed and its "Discover" cards dismissed, so its reader had the same room as everyone else's. The server has an empty Drafts folder, as a real account does; without one Canary stops at a dialog asking for it. Thunderbird keeps no offline copy of Junk and Trash by default; the rest of the mailbox it had in full.</li>
+    <li><strong>Launch</strong> is warm: the app has run before and macOS has its files cached, as it does for an app you use every day. "Ready" is when the message list stopped changing.</li>
+  </ul>
+  <p class="small">Where Spool does not win: MailMate uses less CPU sitting idle (0.1% of a core to Spool’s 0.6%). At this size Spool finishes every other test first, scrolling included.</p>
+
+  <footer class="small">Measured October 2026. The harness, the mailbox generator and the raw results are in the Spool repository under <code>bench/</code>; the numbers can be reproduced on any Mac.</footer>
+</main>
+
+<script>
+  // Median of 20 runs, ms unless noted; "settle" times — until the window
+  // stopped changing. Source: bench/run.sh on the machine named above.
+  const clients = ["Spool", "Apple Mail", "MailMate", "Thunderbird", "Canary"];
+  const metrics = [
+    { title: "Open a message", what: "Click a conversation in the list until it has finished drawing.", unit: "ms", values: [56, 154, 139, 74, 121] },
+    { title: "Next message", what: "Press ↓ until the next message has finished drawing.", unit: "ms", values: [54, 180, 454, 339, 171] },
+    { title: "Search", what: "Type a word until the results have finished drawing.", unit: "ms", values: [134, 254, 440, 433, 524] },
+    { title: "Launch", what: "Open the app until the inbox is on screen and still.", unit: "ms", values: [321, 724, 3376, 3603, 1737] },
+    { title: "Quit", what: "Quit until the process has exited.", unit: "ms", values: [42, 116, 341, 128, 74] },
+    { title: "Scroll", what: "Thirty notches of the scroll wheel until the list stops moving.", unit: "ms", values: [321, 343, 337, 580, 328] },
+    { title: "Memory", what: "Physical footprint after use, including WebKit helper processes.", unit: "MB", values: [129, 344, 548, 1040, 318] },
+    { title: "Idle CPU", what: "Share of one core used while sitting idle.", unit: "%", values: [0.6, 24.3, 0.1, 2.5, 163], decimals: 1 },
+  ];
+  const scale = [
+    ["Open a message", "55 ms", "56 ms"],
+    ["Next message", "55 ms", "54 ms"],
+    ["Search", "61 ms", "134 ms"],
+    ["Launch to a usable inbox", "282 ms", "321 ms"],
+    ["Quit", "28 ms", "42 ms"],
+    ["Memory", "144 MB", "129 MB"],
+    ["First sync, empty to complete", "8 s", "39 s"],
+  ];
+
+  const fmt = (v, m) => (m.decimals ? v.toFixed(m.decimals) : Math.round(v).toLocaleString("en-US")) + " " + m.unit;
+  const root = document.getElementById("metrics");
+  for (const m of metrics) {
+    const max = Math.max(...m.values);
+    const best = Math.min(...m.values);
+    const card = document.createElement("section");
+    card.className = "metric";
+    card.innerHTML = `<h3>${m.title}</h3><p class="what">${m.what}</p>`;
+    m.values.forEach((v, i) => {
+      const row = document.createElement("div");
+      row.className = "row" + (i === 0 ? " spool" : "") + (v === best ? " best" : "");
+      row.innerHTML =
+        `<span class="name">${clients[i]}</span>` +
+        `<div class="track"><div class="bar" style="width:${Math.max(2, (v / max) * 100)}%"></div></div>` +
+        `<span class="value">${fmt(v, m)}</span>`;
+      card.appendChild(row);
+    });
+    root.appendChild(card);
+  }
+  const body = document.getElementById("scale");
+  for (const [name, a, b] of scale) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${name}</td><td class="n">${a}</td><td class="n">${b}</td>`;
+    body.appendChild(tr);
+  }
+</script>
+</body>
+</html>

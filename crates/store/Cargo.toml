@@ -1,0 +1,11 @@
+[package]
+name = "spool-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+spool-core.workspace = true
+anyhow.workspace = true
+log.workspace = true
+rusqlite = { version = "0.40", features = ["bundled"] }

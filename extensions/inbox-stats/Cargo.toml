@@ -1,0 +1,17 @@
+[package]
+name = "inbox-stats"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+# A component, not an executable: the host instantiates it and calls its
+# exports rather than running a `main`.
+crate-type = ["cdylib"]
+
+[dependencies]
+spool-extension = { path = "../sdk" }
+
+[profile.release]
+opt-level = "s"
+strip = true

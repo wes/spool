@@ -1,0 +1,15 @@
+# Pinned, because a release is built from whatever toolchain the machine
+# happened to have and that is not a good enough answer for a binary other
+# people run. The version is also a floor: the workspace does not compile on
+# 1.93, and the failure is six type errors in `demo.rs` rather than anything
+# that mentions a Rust version.
+#
+# Both Mac targets are listed so `scripts/package.sh` can lipo them together
+# without a separate install step — rustup fetches them on first use. The wasm
+# target is here for the same reason: extensions are WebAssembly components,
+# and building one should not start with an error telling you to install
+# something.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "wasm32-wasip2"]

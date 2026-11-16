@@ -1,0 +1,32 @@
+[package]
+name = "spool-ext"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+spool-core.workspace = true
+spool-store.workspace = true
+anyhow.workspace = true
+log.workspace = true
+serde.workspace = true
+# A list setting reaches an extension as JSON: the one structured format both
+# sides of the sandbox already speak.
+serde_json.workspace = true
+toml.workspace = true
+
+# The component model only. No JIT debugging, no profiling, no GC proposal:
+# an extension host wants to load a component, run it under a deadline, and
+# stay small enough that a mail client's build does not become a compiler's.
+wasmtime = { version = "48", default-features = false, features = [
+    # So `wasmtime::Error` converts into the `anyhow::Error` the rest of the
+    # workspace speaks, and a failure inside a component reads like any other.
+    "anyhow",
+    "cranelift",
+    "component-model",
+    "runtime",
+    "std",
+    "addr2line",
+] }
+wasmtime-wasi = { version = "48.0.2", default-features = false, features = ["p2"] }
+

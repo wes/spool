@@ -1,0 +1,25 @@
+<!--
+  A paperclip, drawn rather than borrowed: one bent wire, two bends, no
+  outline and no second colour. The emoji it replaces was a small illustration
+  of a paperclip — highlight, shadow, drawn perspective — which at twelve
+  points is a smudge, and a colour one that matches nothing else in the
+  window.
+
+  Tilted because a paperclip is twice as tall as it is wide and an icon box is
+  square: upright, the wire fills less than half the width and has to be drawn
+  bigger to be seen at all. The viewBox is cropped to the artwork for the same
+  reason — what is left is margin, and margin here is icon that is not there.
+
+  gpui rasterises this to an alpha mask and tints it with the element's text
+  colour, so the stroke colour below only makes the file valid on its own.
+  What matters is the shape, and that all of it is opaque.
+-->
+<svg viewBox="1 1 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="rotate(-45 8 8)">
+    <path d="M11 2.6 V10.4 A3 3 0 0 1 5 10.4 V3.6 A1.75 1.75 0 0 1 8.5 3.6 V9.9"
+          stroke="#000"
+          stroke-width="1.45"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

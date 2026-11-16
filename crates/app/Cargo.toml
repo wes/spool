@@ -1,0 +1,80 @@
+[package]
+name = "spool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+spool-core.workspace = true
+spool-store.workspace = true
+spool-net.workspace = true
+spool-ext.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+log.workspace = true
+env_logger.workspace = true
+gpui = "0.2.2"
+unicode-segmentation = "1"
+# For the one thing std will not tell us: the viewer's UTC offset.
+libc = "0.2"
+smol.workspace = true
+
+# The reader embeds a real WKWebView for HTML mail, which means talking to
+# AppKit directly. macOS only, deliberately: there is no cross-platform web
+# view worth having, and the block renderer stays the fallback everywhere else.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+raw-window-handle = "0.6"
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationRequest", "UNNotificationContent", "UNNotificationSound", "UNNotificationTrigger", "UNError"] }
+
+[target.'cfg(target_os = "macos")'.dependencies.objc2-foundation]
+version = "0.3"
+features = ["NSString", "NSURL", "NSGeometry", "NSObject", "NSDictionary", "NSArray", "NSError", "NSOperation", "NSBundle"]
+
+[target.'cfg(target_os = "macos")'.dependencies.objc2-app-kit]
+version = "0.3"
+features = [
+    "NSView",
+    "NSWindow",
+    "NSScreen",
+    "NSResponder",
+    "NSWorkspace",
+    "NSColor",
+    "NSGraphics",
+    "NSApplication",
+    "NSDockTile",
+    # Dragging an attachment out to Finder.
+    "NSDragging",
+    "NSDraggingItem",
+    "NSDraggingSession",
+    "NSFilePromiseProvider",
+    "NSPasteboard",
+    "NSEvent",
+    "NSImage",
+]
+
+[target.'cfg(target_os = "macos")'.dependencies.objc2-web-kit]
+version = "0.3"
+features = [
+    "WKWebView",
+    "WKWebViewConfiguration",
+    "WKWebpagePreferences",
+    "WKPreferences",
+    "WKNavigation",
+    "WKNavigationDelegate",
+    "WKNavigationAction",
+    "WKFrameInfo",
+    # A `target="_blank"` link asks the UI delegate for a new window rather
+    # than asking the navigation delegate; the reader answers it too.
+    "WKUIDelegate",
+    "WKWindowFeatures",
+    # The HTML editor's line back to Rust: the page posts what changed, and
+    # the composer reads it.
+    "WKUserContentController",
+    "WKScriptMessage",
+    "WKScriptMessageHandler",
+]
+

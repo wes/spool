@@ -1,0 +1,94 @@
+spool — an email client built on gpui, the framework Zed is written in
+
+USAGE
+    spool [options]
+
+OPTIONS
+    --db <path>       open a specific store (default: ~/.local/share/spool/mail.db)
+    --demo <count>    generate a synthetic mailbox of <count> messages and open it
+    --bench <count>   measure ingest and query speed, print the numbers, exit
+    --write-config    create an example ~/.config/spool/accounts.toml
+                      (or just press cmd-, and use Settings > Accounts)
+    --clients         open Clients beside the mailbox
+    --board           open Clients on the board
+    -h, --help        show this message
+
+KEYS
+    j / k, up / down  move through the list        cmd-k    command palette
+    g g / shift-g     newest / oldest              cmd-f, / search
+    enter             open                         tab      cycle all/unread/flagged
+    u                 toggle read                  t        show whole conversation
+    f                 toggle flag                  cmd-b    toggle sidebar
+    e                 archive                      ctrl-n/p next/prev mailbox
+    cmd-shift-n       get new mail (inboxes only, fast)
+    cmd-alt-shift-n   sync everything (every folder, and the folder list)
+    cmd-,             settings (accounts, theme)
+    cmd-alt-b         show / hide the status bar (sync progress lives there)
+    cmd-alt-p         web view / plain-text body
+    cmd-alt-d         slim / detail message list
+    backspace         move to trash                escape   back out one layer
+    cmd-a             select all                   shift-up/down extend selection
+    cmd-z             undo the last move
+    cmd-n             new message, in a window of its own (cmd-w saves it)
+    cmd-shift-d       reopen the draft you last put down
+    cmd-shift-m       new folder (rename and delete are in the File menu)
+
+COMPOSING
+    From is the first row of a message, with a menu on it when more than one
+    account is configured; switching accounts also swaps the signature, as
+    long as you have not typed over it. A reply or a forward goes out from
+    the address the original was written to. Add Cc and Add Bcc at the foot
+    of the window bring those fields in; a blind copy is delivered without
+    appearing in the message, and is named only on the copy filed in Sent.
+
+    cmd-n is always a blank message. A draft you closed, or one whose send
+    failed, is picked back up with cmd-shift-d or File > Resume Draft --
+    never by New Message, which would otherwise open holding a reply to
+    something you were looking at an hour ago.
+
+    Attach... at the foot of the window adds files; so does dropping them on
+    the window, or pasting an image. A forward brings the original's
+    attachments with it.
+
+CRASHES
+    A panic is appended to ~/.local/share/spool/panic.log with a backtrace,
+    because most of this app runs inside Cocoa callbacks where a panic aborts
+    the process and the message is otherwise lost. Send that file along with
+    any crash report.
+
+SIDEBAR
+    Clicking an account shows that account's inbox; its other folders are
+    one click further in. Drag an account onto another to put it there —
+    that order is remembered. Folders sort themselves: the inbox first,
+    then by name, at every level. A folder being synced shows a pulsing dot
+    where its count is; a folded-up account shows one on its own row. That
+    dot is all the sidebar says about a sync -- the progress bar lives in
+    the status bar, which is off by default (cmd-alt-b, or View > Toggle
+    Status Bar).
+
+CLIENTS
+    cmd-shift-c opens Clients, a window beside the mailbox, on the sender of
+    the message you are reading. Everyone you have written to is already in
+    it, with their whole history across every account; newsletters and
+    receipts are not, because nobody answers them. Somebody becomes a client
+    the moment you give them a stage, a tag or a note.
+
+    cmd-1 / cmd-2     directory / board            [ and ]  move a client a stage
+    cmd-n             new client                   cmd-z    undo a move or a delete
+    cmd-shift-i       import a CSV, vCard or JSON file of contacts
+
+    Sources... pulls new signups from your own apps on a schedule: any https
+    address that answers with a list of people as JSON or CSV. Put {since}
+    in it and only people new since the last pull are asked for. Notes, tags
+    and the board live in clients.db beside the mail store, so rebuilding or
+    resyncing mail never touches them.
+
+SEARCH
+    Words match subject, sender and body, and narrow as you type. Operators
+    narrow further, and anything that is not one is searched for as typed:
+
+    from:ana          sender name or address       is:unread   also is:read
+    to:bo             recipient, including cc      is:flagged  also is:unflagged
+    subject:"roof"    words in the subject         has:attachment
+    in:archive        folder name                  after:2026-01-31, after:7d
+                                                   before:2026-01-31

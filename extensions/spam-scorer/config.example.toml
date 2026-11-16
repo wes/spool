@@ -1,0 +1,30 @@
+# Copy this to `config.toml` in the installed extension's directory:
+#
+#     ~/.local/share/spool/extensions/spam-scorer/config.toml
+#
+# Not into the source directory — `scripts/build-extension.sh` copies the
+# manifest and the component, and deliberately not this. A build that
+# overwrote your key would be a build that cost you a trip to the dashboard.
+#
+# Every key here is declared in `spool.toml`. One that is not declared is
+# refused by name at load, because a typo in an API key setting is otherwise
+# indistinguishable from an API key that does not work.
+
+# Required. From https://typesafe.ai — it goes to api.typesafe.ai, which is the
+# only host this extension's manifest grants, and nowhere else.
+api-key = "sk-..."
+
+# Which System One model answers. `jev-latest` unless you are pinning one.
+model = "jev-latest"
+
+# 0–4, on the scale in `src/jev.rs`. At or above this a message is badged as
+# spam and banners in the reader; one point below it is badged `Bulk` and says
+# nothing else. 3 is "bulk commercial mail sent to an address that never asked
+# for it", which is where most people mean when they say spam.
+threshold = 3
+
+# `excerpt` sends the first 2000 characters of the plain-text body to Jev along
+# with the headers. `none` keeps the body on this machine — the sender, the
+# subject, the reply-to, the recipient count and the preview line still go,
+# because a classifier shown nothing classifies nothing.
+body = "excerpt"

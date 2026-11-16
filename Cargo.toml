@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/store", "crates/net", "crates/ext", "crates/app", "crates/bench"]
+
+# Extensions and the crate used to write them build for `wasm32-wasip2`, not for
+# this machine. They are excluded rather than merely never built, because a
+# workspace member is resolved and linted as one — and `cargo test --workspace`
+# would try to run a mail client's test suite against a WebAssembly component.
+#
+# The whole directory, not a list of what is in it: naming them individually
+# means `cargo new` inside `extensions/` fails until somebody edits this file,
+# which is a poor first thing to happen to anyone writing their first one.
+exclude = ["extensions"]
+
+[workspace.package]
+version = "0.1.15"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+spool-core = { path = "crates/core" }
+spool-store = { path = "crates/store" }
+spool-net = { path = "crates/net" }
+spool-ext = { path = "crates/ext" }
+spool-bench = { path = "crates/bench" }
+
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+smol = "2"
+futures = "0.3"
+log = "0.4"
+env_logger = "0.11"
+
+# This is a UI app; ship it optimized.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Dependencies are optimized even in dev builds, so the debug build of the app
+# still renders at full speed while staying fast to recompile.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1

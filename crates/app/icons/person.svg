@@ -1,0 +1,18 @@
+<!--
+  Somebody: a head and a pair of shoulders, one stroke weight, no fill — the
+  paperclip's line, so the two read as one set beside a message.
+
+  The shoulders are an arc cut flat at the bottom rather than a closed shape:
+  closed, at thirteen points, the counter fills in and it becomes a blob.
+
+  gpui rasterises this to an alpha mask and tints it with the element's text
+  colour, so the stroke colour below only makes the file valid on its own.
+-->
+<svg viewBox="1 1 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="8" cy="5.4" r="2.6" stroke="#000" stroke-width="1.45"/>
+  <path d="M2.9 14.2 C3.4 11.3 5.5 9.8 8 9.8 C10.5 9.8 12.6 11.3 13.1 14.2"
+        stroke="#000"
+        stroke-width="1.45"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

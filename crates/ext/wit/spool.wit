@@ -1,0 +1,437 @@
+// The contract between Spool and an extension.
+//
+// This file is the API. It is versioned as a package — `spool:extension@0.1.0`
+// — and that version is a promise: a component built against 0.1 keeps working
+// against every 0.1.x host. Adding a function, a record field or a variant case
+// is a minor bump; removing or retyping one is a major, and the host refuses a
+// component whose major it does not implement rather than trapping halfway
+// through a call.
+//
+// Two rules shaped everything here.
+//
+// The first is that the host renders and the extension describes. Nothing in
+// this file hands an extension a drawing surface, because Spool builds a frame
+// in about 85µs and holds that number by never letting arbitrary code run while
+// a frame is being built. An extension says what it wants shown; the host draws
+// it, on its own schedule, from data already in memory.
+//
+// The second is that reads are imports and writes are effects. An extension
+// calls the host to find things out, but changes come back as a list of
+// `effect` values the host applies itself. That is what makes a change
+// auditable, ordered, undoable and refusable — three of which are impossible if
+// an extension mutates the store directly.
+
+package spool:extension@0.2.0;
+
+/// The data that crosses the boundary, in both directions.
+interface types {
+    /// The store's own ids, passed through unchanged.
+    ///
+    /// Opaque to an extension: they are handles to give back to the host, not
+    /// numbers to do arithmetic on. An id from one machine's store means
+    /// nothing on another's, so an extension that persists one is persisting a
+    /// local fact.
+    type message-id = u64;
+    type mailbox-id = u64;
+    type account-id = u64;
+    type thread-id = u64;
+
+    record address {
+        /// The display name, which is very often empty.
+        name: string,
+        /// The address itself, as it arrived.
+        addr: string,
+    }
+
+    /// IMAP's five flags, plus the two Spool keeps on its own.
+    ///
+    /// `triaged` and `forwarded` are local: no IMAP server knows them, and a
+    /// flag sync preserves them rather than overwriting them with the server's
+    /// view. An extension that triages mail sets `triaged` to record that it
+    /// has looked, and that mark survives tomorrow's sync.
+    flags message-flags {
+        seen,
+        flagged,
+        answered,
+        draft,
+        deleted,
+        triaged,
+        forwarded,
+    }
+
+    /// What the list knows about a message without opening it.
+    ///
+    /// This is the hot type on the host side — one per message in the open
+    /// mailbox — so it carries no body. Ask for that with `host.body` when a
+    /// decision actually needs it.
+    record envelope {
+        id: message-id,
+        account: account-id,
+        mailbox: mailbox-id,
+        thread: thread-id,
+        %from: address,
+        subject: string,
+        /// Unix seconds.
+        date: s64,
+        /// The first couple of hundred characters of the plain-text body,
+        /// computed at ingest. Enough to classify most mail without reading it.
+        snippet: string,
+        %flags: message-flags,
+        has-attachments: bool,
+        size: u32,
+    }
+
+    record attachment {
+        name: string,
+        mime: string,
+        size: u32,
+    }
+
+    /// A message's content, fetched on demand.
+    record body {
+        plain: string,
+        html: string,
+        to: list<address>,
+        cc: list<address>,
+        reply-to: list<address>,
+        /// The original's own `Message-ID` header, as it arrived.
+        rfc-message-id: string,
+        attachments: list<attachment>,
+    }
+
+    enum mailbox-role {
+        inbox,
+        sent,
+        drafts,
+        archive,
+        trash,
+        junk,
+        other,
+    }
+
+    record mailbox {
+        id: mailbox-id,
+        account: account-id,
+        /// The server's own path, e.g. `INBOX.Lists.rust`.
+        path: string,
+        /// The leaf, for showing.
+        name: string,
+        role: mailbox-role,
+        total: u32,
+        unread: u32,
+    }
+
+    record account {
+        id: account-id,
+        name: string,
+        email: string,
+    }
+
+    /// Where a query applies.
+    variant scope {
+        everything,
+        account(account-id),
+        mailbox(mailbox-id),
+    }
+
+    /// How the message list is filtered — the same four the UI has.
+    ///
+    /// `search` speaks the language the search box speaks, operators included:
+    /// `from:ana is:unread after:7d`. An extension gets the app's own query
+    /// parser rather than a second one that drifts from it.
+    variant filter {
+        all,
+        unread,
+        flagged,
+        search(string),
+    }
+
+    record query {
+        scope: scope,
+        filter: filter,
+        /// Capped by the host. Asking for more than the cap is not an error;
+        /// it gets the cap.
+        limit: u32,
+    }
+}
+
+/// What an extension can ask the host to tell it or do for it.
+///
+/// Every function here is gated by a capability the manifest declares. A
+/// capability that was not declared is not a function that returns an error —
+/// it is a function the component was never linked against, so an extension
+/// cannot reach past what it asked for even if it tries.
+interface host {
+    use types.{envelope, body, mailbox, account, query, message-id};
+
+    enum level {
+        debug,
+        info,
+        warn,
+        error,
+    }
+
+    /// Writes to Spool's log, prefixed with the extension's id.
+    ///
+    /// Needs no capability. An extension that cannot say what went wrong is an
+    /// extension nobody can debug.
+    log: func(level: level, message: string);
+
+    /// Seconds since the unix epoch.
+    ///
+    /// Here rather than left to WASI so that a component needs no filesystem
+    /// or clock preopens to know what day it is, and so tests can hold it
+    /// still.
+    now: func() -> s64;
+
+    /// `read-mail`
+    query-envelopes: func(q: query) -> list<envelope>;
+
+    /// `read-mail`. `none` when there is no such message.
+    read-body: func(id: message-id) -> option<body>;
+
+    /// `read-mail`. One named header off a message, case-insensitively.
+    ///
+    /// Separate from `read-body` because the common case — is this a reply,
+    /// and to what? — should not copy a megabyte of HTML across the boundary
+    /// to answer a question about forty bytes.
+    ///
+    /// Spool stores parsed mail rather than raw source, so this answers for
+    /// the headers the store has a column for and for nothing else:
+    /// `message-id`, `in-reply-to`, `references`, `from`, `to`, `cc`,
+    /// `reply-to`, `subject` and `date`. Any other name is `none` — which
+    /// means "never kept", not "was not there", and an extension cannot tell
+    /// the difference. Retaining the full header block is a change to the
+    /// store, and until it happens this is the honest extent of it.
+    header: func(id: message-id, name: string) -> option<string>;
+
+    /// `read-mail`
+    mailboxes: func() -> list<mailbox>;
+
+    /// `read-mail`
+    accounts: func() -> list<account>;
+
+    /// `storage`. A per-extension key/value store, persisted across launches.
+    ///
+    /// Private to the extension and namespaced by its id, so two extensions
+    /// cannot read or clobber each other's state.
+    store-get: func(key: string) -> option<string>;
+
+    /// `storage`
+    store-set: func(key: string, value: string);
+
+    /// `storage`
+    store-delete: func(key: string);
+
+    record request {
+        method: string,
+        url: string,
+        headers: list<tuple<string, string>>,
+        body: option<list<u8>>,
+    }
+
+    record response {
+        status: u16,
+        headers: list<tuple<string, string>>,
+        body: list<u8>,
+    }
+
+    /// `net:https:<host>`. HTTPS only, and only to the hosts declared.
+    ///
+    /// The error is a string because an extension cannot do anything useful
+    /// with a typed transport failure except report it.
+    fetch: func(req: request) -> result<response, string>;
+}
+
+/// The vocabulary an extension describes its UI in.
+///
+/// A tree, flattened into an arena: `nodes` holds every node and a node names
+/// its children by index. WIT has no recursive types, and an arena is the
+/// honest way to say so — it also makes the host's validation a single pass
+/// that can reject an out-of-range index or a cycle before anything is drawn.
+interface ui {
+    /// How prominent a piece of text is. Concrete sizes and colors are the
+    /// theme's business, not the extension's: an extension that could name a
+    /// hex color would look wrong in every theme but the one it was written in.
+    enum emphasis {
+        normal,
+        muted,
+        strong,
+        heading,
+        accent,
+        danger,
+    }
+
+    record text {
+        content: string,
+        emphasis: emphasis,
+    }
+
+    record button {
+        label: string,
+        /// The id of a command in this extension's manifest. Pressing the
+        /// button dispatches it exactly as the palette would, which means a
+        /// button can do nothing the keyboard cannot.
+        run: string,
+        enabled: bool,
+    }
+
+    /// What a node is. Children are indices into the tree's `nodes`.
+    variant node-kind {
+        /// Lays its children out left to right.
+        row,
+        /// Lays its children out top to bottom.
+        column,
+        text(text),
+        button(button),
+        /// A horizontal rule.
+        divider,
+        /// Flexible empty space.
+        spacer,
+    }
+
+    record node {
+        kind: node-kind,
+        children: list<u32>,
+    }
+
+    record tree {
+        nodes: list<node>,
+        /// Index of the root. A tree with no nodes draws nothing.
+        root: u32,
+    }
+
+    /// A strip above a message in the reader.
+    ///
+    /// One with no text is not a strip: its badges, and its button if it has
+    /// one, are drawn beside the message's subject instead.
+    record banner {
+        /// Drawn at the start of the strip, as they are drawn on a row: a
+        /// word or two that says what the message is, ahead of the sentence
+        /// about it. Added in 0.2.
+        badges: list<badge>,
+        text: string,
+        emphasis: emphasis,
+        /// An optional button on the right-hand end.
+        action: option<button>,
+    }
+
+    /// A small mark on a row in the message list.
+    ///
+    /// Text rather than an image: rows are drawn twenty to a frame and an
+    /// extension that could supply a bitmap per row could make the list slow,
+    /// which is the one thing the list is not allowed to be.
+    record badge {
+        label: string,
+        emphasis: emphasis,
+    }
+}
+
+/// What an extension hands back after doing something.
+///
+/// Effects are applied by the host, in order, after the call returns. An
+/// extension therefore cannot leave the store half-changed by trapping midway,
+/// and every change an extension makes is a value the host could log, refuse,
+/// or put on the undo stack.
+interface effects {
+    use types.{message-id, mailbox-id, message-flags};
+
+    record flag-change {
+        message: message-id,
+        /// Flags to turn on, then flags to turn off. A flag in both is turned
+        /// off, because "remove" is the more conservative reading.
+        add: message-flags,
+        remove: message-flags,
+    }
+
+    record move-to {
+        message: message-id,
+        mailbox: mailbox-id,
+    }
+
+    record notification {
+        title: string,
+        body: string,
+        /// Opens this message when the notification is clicked.
+        message: option<message-id>,
+    }
+
+    variant effect {
+        /// `modify-mail`
+        set-flags(flag-change),
+        /// `modify-mail`
+        move-to(move-to),
+        /// `modify-mail`. Files it in the account's archive folder.
+        archive(message-id),
+        /// `modify-mail`. Files it in the account's trash.
+        trash(message-id),
+        /// `notify`. A system notification.
+        notify(notification),
+        /// `ui`. A line in the status bar, which fades.
+        status(string),
+        /// `ui`. Opens a URL in the browser.
+        open-url(string),
+        /// `ui`. Asks the host to draw this panel again.
+        invalidate-panel(string),
+    }
+}
+
+/// Everything an extension may implement.
+///
+/// All four exports are required by the component model, which has no notion of
+/// an optional export — but the Rust SDK implements every one of them as a
+/// no-op, so an extension that only adds a command writes only that command.
+/// The host also skips calls an extension's manifest says it has no use for, so
+/// an extension with no rules costs nothing when mail arrives.
+world extension {
+    use types.{envelope, message-id, mailbox-id, account-id};
+    use effects.{effect};
+    use ui.{tree, banner, badge};
+
+    import host;
+
+    /// Called once, the first time the extension is needed.
+    ///
+    /// An error here disables the extension and says why in the log, rather
+    /// than leaving something half-started to fail later in a way that is
+    /// harder to attribute.
+    export init: func() -> result<_, string>;
+
+    /// New mail has landed.
+    ///
+    /// Batched, and called *after* the messages are committed to the store —
+    /// so an extension can take as long as it likes without slowing an ingest
+    /// that runs at thirty thousand messages a second, and so the effects it
+    /// returns apply to mail that certainly exists.
+    export on-messages: func(messages: list<envelope>) -> list<effect>;
+
+    /// What this extension wants shown on a message.
+    ///
+    /// Must be a pure function of its argument: the host calls it off the UI
+    /// thread, caches what comes back, and draws rows from the cache. An
+    /// implementation that returns something different each time will appear
+    /// to flicker at random, because it is being asked far less often than it
+    /// is being drawn.
+    export decorate: func(message: envelope) -> decorations;
+
+    record decorations {
+        banners: list<banner>,
+        badges: list<badge>,
+    }
+
+    /// What the user has in front of them when they run a command.
+    record command-context {
+        /// The selection, or the open message, or empty.
+        selection: list<message-id>,
+        mailbox: option<mailbox-id>,
+        account: option<account-id>,
+        /// Whatever is in the search box.
+        search: string,
+    }
+
+    /// Runs one of the commands the manifest declares.
+    export run-command: func(id: string, ctx: command-context) -> list<effect>;
+
+    /// Draws one of the panels the manifest declares.
+    export render-panel: func(id: string) -> tree;
+}

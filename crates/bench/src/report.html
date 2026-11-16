@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spool — benchmark history</title>
+<style>
+  /* Palette roles, defined once and referenced everywhere, so the two modes
+     swap in one place. Light is the base; dark is *selected* for the dark
+     surface rather than being an automatic inversion. */
+  :root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --muted:       #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --series:      #2a78d6;
+    --good:        #0ca30c;
+    --critical:    #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --series:    #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --ink:         #ffffff;
+    --ink-2:       #c3c2b7;
+    --muted:       #898781;
+    --grid:        #2c2c2a;
+    --baseline:    #383835;
+    --series:      #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 24px 64px;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .meta { color: var(--ink-2); font-size: 13px; }
+  .meta b { font-weight: 600; color: var(--ink); }
+  .note { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; max-width: 70ch; }
+
+  .controls { display: flex; gap: 8px; align-items: center; margin: 20px 0 22px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--grid);
+    border-radius: 7px; padding: 5px 11px; cursor: pointer;
+  }
+  button:hover { color: var(--ink); }
+  button[aria-pressed="true"] { color: var(--ink); border-color: var(--baseline); }
+
+  h2 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--muted);
+    margin: 30px 0 12px; padding-bottom: 7px; border-bottom: 1px solid var(--grid);
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
+
+  /* The stat tile: label, value, delta, trend. */
+  .tile {
+    background: var(--surface); border: 1px solid var(--grid);
+    border-radius: 10px; padding: 12px 13px 8px;
+  }
+  .tile .id {
+    font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--ink-2); word-break: break-all;
+  }
+  .row { display: flex; align-items: baseline; gap: 8px; margin-top: 5px; min-height: 26px; }
+  .value { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; }
+  /* Direction is carried by the word, not the colour: red and green are
+     4.1 ΔE apart under deuteranopia, so hue alone would say nothing to a
+     reader who cannot separate them. */
+  .delta { font-size: 12px; font-weight: 500; }
+  .delta.faster { color: var(--good); }
+  .delta.slower { color: var(--critical); }
+  .delta.flat   { color: var(--muted); }
+
+  svg { display: block; width: 100%; height: 46px; overflow: visible; }
+  .spark { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .zero  { stroke: var(--grid); stroke-width: 1; }
+  .head  { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+  .hit   { fill: transparent; cursor: crosshair; }
+  .cross { stroke: var(--baseline); stroke-width: 1; opacity: 0; }
+  .dot   { fill: var(--series); stroke: var(--surface); stroke-width: 2; opacity: 0; }
+  .tile.hot .cross, .tile.hot .dot { opacity: 1; }
+  .scale { font-size: 10.5px; fill: var(--muted); }
+
+  .tip {
+    position: fixed; z-index: 10; pointer-events: none; opacity: 0;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--baseline); border-radius: 7px;
+    padding: 7px 9px; font-size: 12px; line-height: 1.45;
+    box-shadow: 0 6px 20px rgba(0,0,0,.14); max-width: 280px;
+  }
+  .tip b { font-weight: 600; }
+  .tip .c { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: right; padding: 5px 9px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child {
+    text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  }
+  thead th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--page); }
+  .scroll { overflow-x: auto; border: 1px solid var(--grid); border-radius: 10px; background: var(--surface); padding: 4px 8px; }
+  [hidden] { display: none !important; }
+  .empty { color: var(--muted); padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Benchmark history</h1>
+    <span class="meta" id="meta"></span>
+  </header>
+  <p class="note" id="note"></p>
+
+  <div class="controls">
+    <button id="view-charts" aria-pressed="true">Charts</button>
+    <button id="view-table" aria-pressed="false">Table</button>
+    <button id="only-moved" aria-pressed="false">Only what moved</button>
+    <button id="theme">Dark / light</button>
+  </div>
+
+  <div id="charts"></div>
+  <div id="table" hidden></div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = /*__DATA__*/ null;
+
+const tip = document.getElementById("tip");
+const fmtDate = ts => new Date(ts * 1000).toLocaleString([], {
+  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+});
+
+/** Signed change between the last two readings, in the terms the unit uses. */
+function lastDelta(b) {
+  const seen = b.values.map((v, i) => [v, i]).filter(([v]) => v !== null);
+  if (seen.length < 2) return null;
+
+  const [now] = seen[seen.length - 1];
+  const [before] = seen[seen.length - 2];
+  if (!before) return null;
+
+  const relative = (now - before) / before;
+  // "Better" is not "bigger": throughput improves by going up, a duration by
+  // going down. The unit knows which, and the word shown says it outright.
+  const better = b.higherIsBetter ? relative > 0 : relative < 0;
+  return {
+    relative,
+    word: Math.abs(relative) < 0.005 ? "flat" : better ? "faster" : "slower",
+  };
+}
+
+function sparkline(b) {
+  const W = 232, H = 46, PAD = 3;
+  const points = b.values.map((v, i) => [i, v]).filter(([, v]) => v !== null);
+  if (points.length === 0) return "";
+
+  const lo = Math.min(...points.map(([, v]) => v));
+  const hi = Math.max(...points.map(([, v]) => v));
+  const span = hi - lo;
+  const n = b.values.length;
+
+  const x = i => n === 1 ? W / 2 : PAD + (i / (n - 1)) * (W - PAD * 2);
+  // A series that never moved is drawn down the middle, not along the floor.
+  // Scaling it by anything would put it at one edge, and a flat line pinned to
+  // the bottom of the box reads as zero — which is exactly wrong for a count
+  // that has been steady at a hundred thousand all week.
+  const y = v => span === 0 ? H / 2 : H - PAD - ((v - lo) / span) * (H - PAD * 2);
+
+  const path = points.map(([i, v], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const [li, lv] = points[points.length - 1];
+
+  const hits = b.values.map((v, i) => v === null ? "" :
+    `<rect class="hit" data-i="${i}" x="${(x(i) - (W / Math.max(n, 1)) / 2).toFixed(1)}" y="0" width="${(W / Math.max(n, 1)).toFixed(1)}" height="${H}"></rect>`
+  ).join("");
+
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+      aria-label="${b.id} over ${points.length} runs">
+    <line class="zero" x1="0" y1="${H - PAD}" x2="${W}" y2="${H - PAD}"></line>
+    <path class="spark" d="${path}"></path>
+    <circle class="head" cx="${x(li).toFixed(1)}" cy="${y(lv).toFixed(1)}" r="3.5"></circle>
+    <line class="cross" x1="0" y1="0" x2="0" y2="${H}"></line>
+    <circle class="dot" cx="0" cy="0" r="4.5"></circle>
+    ${hits}
+  </svg>`;
+}
+
+function tile(b) {
+  const d = lastDelta(b);
+  const latest = [...b.formatted].reverse().find(v => v !== null) ?? "—";
+  const delta = d
+    ? `<span class="delta ${d.word}">${d.word === "flat" ? "unchanged"
+        : `${(d.relative * 100 > 0 ? "+" : "")}${(d.relative * 100).toFixed(1)}% ${d.word}`}</span>`
+    : `<span class="delta flat">first run</span>`;
+
+  return `<div class="tile" data-id="${b.id}" data-moved="${d && d.word !== "flat" && Math.abs(d.relative) >= 0.05 ? "1" : "0"}">
+    <div class="id">${b.id}</div>
+    <div class="row"><span class="value">${latest}</span>${delta}</div>
+    ${sparkline(b)}
+  </div>`;
+}
+
+/** Grouped by the first segment of the id, which is how they are named. */
+function groups() {
+  const out = new Map();
+  for (const b of DATA.benchmarks) {
+    const key = b.id.split(".")[0];
+    if (!out.has(key)) out.set(key, []);
+    out.get(key).push(b);
+  }
+  return out;
+}
+
+function render() {
+  document.getElementById("meta").innerHTML =
+    `<b>${DATA.machine}</b> &nbsp;·&nbsp; ${DATA.corpus.toLocaleString()} messages &nbsp;·&nbsp; ${DATA.runs.length} run${DATA.runs.length === 1 ? "" : "s"}`;
+  document.getElementById("note").textContent = DATA.note;
+
+  if (!DATA.runs.length) {
+    document.getElementById("charts").innerHTML =
+      `<p class="empty">No runs recorded yet for this machine. Run <code>spool-bench</code> and come back.</p>`;
+    return;
+  }
+
+  document.getElementById("charts").innerHTML = [...groups()].map(([name, list]) =>
+    `<h2>${name}</h2><div class="grid">${list.map(tile).join("")}</div>`
+  ).join("");
+
+  const head = DATA.runs.map(r =>
+    `<th title="${fmtDate(r.at)}">${r.commit}${r.dirty ? "*" : ""}</th>`).join("");
+  document.getElementById("table").innerHTML = `<div class="scroll"><table>
+    <thead><tr><th>benchmark</th>${head}</tr></thead>
+    <tbody>${DATA.benchmarks.map(b => `<tr><td>${b.id}</td>${
+      b.formatted.map(v => `<td>${v ?? "—"}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+// ---- hover: crosshair + tooltip, the layer a line chart ships with --------
+document.addEventListener("mousemove", e => {
+  const hit = e.target.closest?.(".hit");
+  if (!hit) {
+    tip.style.opacity = 0;
+    document.querySelectorAll(".tile.hot").forEach(t => t.classList.remove("hot"));
+    return;
+  }
+
+  const svg = hit.ownerSVGElement;
+  const card = hit.closest(".tile");
+  const i = +hit.dataset.i;
+  const b = DATA.benchmarks.find(x => x.id === card.dataset.id);
+  const run = DATA.runs[i];
+
+  const path = svg.querySelector(".spark");
+  const box = path.getBBox();
+  const cx = +hit.getAttribute("x") + +hit.getAttribute("width") / 2;
+
+  document.querySelectorAll(".tile.hot").forEach(t => t.classList.remove("hot"));
+  card.classList.add("hot");
+
+  const cross = svg.querySelector(".cross");
+  cross.setAttribute("x1", cx); cross.setAttribute("x2", cx);
+
+  // Re-walk the path to find this point's y, rather than storing a parallel
+  // copy of the geometry that could drift from what was drawn.
+  const dot = svg.querySelector(".dot");
+  const seen = b.values.map((v, k) => [v, k]).filter(([v]) => v !== null);
+  const at = seen.findIndex(([, k]) => k === i);
+  if (at >= 0) {
+    const len = path.getTotalLength();
+    const p = path.getPointAtLength(seen.length === 1 ? 0 : (at / (seen.length - 1)) * len);
+    dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
+    dot.style.opacity = 1;
+  } else {
+    dot.style.opacity = 0;
+  }
+  void box;
+
+  tip.innerHTML = `<b>${b.formatted[i] ?? "not measured"}</b><br>
+    <span class="c">${run.commit}${run.dirty ? " (dirty)" : ""}</span><br>
+    <span class="c">${fmtDate(run.at)}</span>`;
+  tip.style.opacity = 1;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + "px";
+  tip.style.top = Math.max(e.clientY - r.height - 12, 8) + "px";
+});
+
+// ---- controls -------------------------------------------------------------
+const charts = document.getElementById("charts"), table = document.getElementById("table");
+const bCharts = document.getElementById("view-charts"), bTable = document.getElementById("view-table");
+
+function view(showCharts) {
+  charts.hidden = !showCharts; table.hidden = showCharts;
+  bCharts.setAttribute("aria-pressed", showCharts);
+  bTable.setAttribute("aria-pressed", !showCharts);
+}
+bCharts.onclick = () => view(true);
+bTable.onclick = () => view(false);
+
+document.getElementById("only-moved").onclick = e => {
+  const on = e.target.getAttribute("aria-pressed") !== "true";
+  e.target.setAttribute("aria-pressed", on);
+  document.querySelectorAll(".tile").forEach(t => {
+    t.hidden = on && t.dataset.moved !== "1";
+  });
+  document.querySelectorAll("#charts h2").forEach(h => {
+    const grid = h.nextElementSibling;
+    h.hidden = on && ![...grid.children].some(c => !c.hidden);
+  });
+};
+
+document.getElementById("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const now = document.documentElement.getAttribute("data-theme") ?? (dark ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", now === "dark" ? "light" : "dark");
+};
+
+render();
+</script>
+</body>
+</html>
