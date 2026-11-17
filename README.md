@@ -1,11 +1,19 @@
 # Spool
 
-An email client built on [gpui](https://crates.io/crates/gpui) — the
-GPU-accelerated UI framework Zed is written in. Rust end to end, no web view,
-no Electron.
+An email client for macOS built on [gpui](https://crates.io/crates/gpui) — the
+GPU-accelerated UI framework Zed is written in. Rust end to end, no Electron:
+the interface is drawn on the GPU, and the only web view is the one that shows
+HTML mail [as its sender laid it out](#rendering-html-mail).
 
 The question was: what would email feel like if Zed were an email client?
 This is a working answer to that, at a scale where the answer means something.
+
+![Spool, showing a demo mailbox](docs/screenshot.png)
+
+**[Download Spool](https://github.com/wes/spool-releases/releases/latest/download/Spool.dmg)**
+— macOS 13 or later, Apple silicon and Intel. Signed, notarized, and it
+updates itself. Or [build it from source](#building), or try it on a
+synthetic mailbox without connecting an account:
 
 ```
 spool --demo 250000
@@ -15,19 +23,19 @@ spool --demo 250000
 
 **Working:** three-pane keyboard-driven UI, multiple accounts with a unified
 view, virtualized message list, full-text search, conversation threading,
-HTML-to-styled-text rendering, flags/archive/delete, command palette, settings
-pane with four themes, IMAP sync against real servers,
-[Clients](#clients) — a client book and sales board built from your mail — and
-[extensions](#extensions) — WebAssembly components that contribute commands,
-badges, banners and panels, and that run rules over mail as it lands.
+HTML mail, flags/archive/move/delete written back to the server through a queue
+that survives being offline, command palette, settings pane with four themes,
+IMAP sync against real servers, [composing](#composing) — replies, forwards,
+attachments, signatures and drafts, as text or HTML — Gmail sign-in with
+Google or an app password for any IMAP server, `mailto:` links, optional
+ChatGPT writing tools, [Clients](#clients) — a client book and sales board
+built from your mail — and [extensions](#extensions) — WebAssembly components
+that contribute commands, badges, banners and panels, and that run rules over
+mail as it lands.
 
-**Not built:** composing and sending (SMTP is a stub), OAuth (app passwords
-only), offline queueing of flag changes back to the server, and the agent
-layer. See [Where agents plug in](#where-agents-plug-in).
-
-**Half built:** the extension *settings* screen lists what is installed, what
-each one may do and what it still needs, but values are edited in a file rather
-than in the pane.
+**Not built:** the agent layer — see
+[Where agents plug in](#where-agents-plug-in) — and changes made on another
+device arriving here (see [Caveats](#caveats)).
 
 ## Measured
 
@@ -787,8 +795,9 @@ there — but no agent code is written yet, and none is stubbed. What exists:
   or `ToggleFlag` gets the same code path a keystroke does — including the
   optimistic UI update — rather than a parallel mutation path.
 
-The honest next step is not an agent, though. It is composing and sending: an
-agent that can triage but not reply is half a feature.
+Composing and sending, which this section used to name as the honest next
+step — an agent that can triage but not reply is half a feature — are built
+now, so nothing stands in front of it but the agent itself.
 
 ## Building
 
@@ -861,3 +870,7 @@ identity does not.
   saved. That is the window manager doing its job, not a bug here.
 - The demo corpus is deterministic (seeded xorshift), so timings are
   comparable across runs and a regression shows up as a number.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
