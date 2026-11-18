@@ -25,6 +25,7 @@ mod clients_profile;
 mod clients_window;
 mod crash;
 mod default_mail;
+mod demo;
 mod extension_flow;
 mod extension_ui;
 mod extensions;
@@ -166,6 +167,26 @@ fn main() -> Result<()> {
         return run_benchmark(count);
     }
 
+    // Preferences are read before the window exists, so the first frame is
+    // already painted in the chosen theme rather than flashing the default —
+    // and before the store, because they say whether that is the demo.
+    let mut settings = Settings::load();
+
+    // The demo somebody chose on the welcome screen is where Spool opens until
+    // they leave it, unless a store was asked for by name.
+    let named = args.db.is_some() || args.demo.is_some();
+    if !named && settings.demo && !demo::store_path().exists() {
+        // Deleted from under it: back to the real mailbox, not an empty demo.
+        settings.demo = false;
+        if let Err(e) = settings.save() {
+            log::warn!("could not forget the missing demo: {e:#}");
+        }
+    }
+    let tried_demo = !named && settings.demo;
+    if !named && !tried_demo {
+        demo::clear_away_later();
+    }
+
     // A demo corpus goes to its own database so it can never be confused with,
     // or write into, real mail.
     let (path, seed_with) = match args.demo {
@@ -173,42 +194,21 @@ fn main() -> Result<()> {
             args.db.unwrap_or_else(|| std::env::temp_dir().join("spool-demo.db")),
             Some(count),
         ),
+        None if tried_demo => (demo::store_path(), None),
         None => (args.db.unwrap_or_else(default_db_path), None),
     };
 
-    // Preferences are read before the window exists, so the first frame is
-    // already painted in the chosen theme rather than flashing the default.
-    let settings = Settings::load();
-
     let store = if let Some(count) = seed_with {
-        // Regenerating is the point of the flag, so start from empty.
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
-        }
-        let store = Store::open(&path)?;
-        // Indexed as it is written, whether or not Clients is on, so the book
-        // below has people to be built from — and so a demo that adds Clients
-        // later finds it full.
-        store.set_people_index(true)?;
-
+        // Regenerating is the point of the flag, so it starts from empty.
         let started = Instant::now();
-        spool_store::demo::populate(&store, count, 0x5EED)?;
+        let (store, clients) = spool_store::demo::create(&path, count, |_| {})?;
         let elapsed = started.elapsed();
         println!(
-            "generated {count} messages in {:.2}s ({:.0} msg/s) -> {}",
+            "generated {count} messages and {clients} clients in {:.2}s ({:.0} msg/s) -> {}",
             elapsed.as_secs_f64(),
             count as f64 / elapsed.as_secs_f64(),
             path.display(),
         );
-
-        // A client book to go with it, so Clients has a sale to show.
-        let book_path = spool_store::book::Book::path_beside(&path);
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", book_path.display()));
-        }
-        let book = spool_store::book::Book::open(&book_path)?;
-        let clients = spool_store::demo::populate_book(&store, &book)?;
-        println!("and {clients} clients -> {}", book_path.display());
         store
     } else {
         let opening = Instant::now();
@@ -221,7 +221,7 @@ fn main() -> Result<()> {
     // on it only if Clients has been added, and not at all otherwise.
     store.set_people_index(settings.clients)?;
 
-    if seed_with.is_none() && store.is_empty()? {
+    if seed_with.is_none() && !tried_demo && store.is_empty()? {
         println!(
             "The store at {} is empty. Try:\n    spool --demo 100000",
             path.display()
@@ -292,6 +292,7 @@ fn main() -> Result<()> {
                         store.clone(),
                         settings.clone(),
                         extensions_root.clone(),
+                        seed_with.is_some() || tried_demo,
                         window,
                         cx,
                     )
@@ -564,25 +565,26 @@ fn default_bounds(display: Option<Bounds<Pixels>>) -> Bounds<Pixels> {
 /// or the settings sheet is also a window, and remembering one of those as
 /// where the mailbox goes is how the app reopens the size of a dialog.
 fn window_geometry(mailbox: WindowHandle<Workspace>, cx: &mut App) -> Option<WindowState> {
-    mailbox
-        .update(cx, |_, window, _| {
-            let (bounds, maximized) = match window.window_bounds() {
-                WindowBounds::Windowed(bounds) => (bounds, false),
-                // Both remember the rectangle to un-maximize back to; only
-                // the maximized case reopens filling the screen.
-                WindowBounds::Maximized(bounds) => (bounds, true),
-                WindowBounds::Fullscreen(bounds) => (bounds, false),
-            };
+    mailbox.update(cx, |_, window, _| window_state(window)).ok()
+}
 
-            WindowState {
-                x: f32::from(bounds.origin.x),
-                y: f32::from(bounds.origin.y),
-                width: f32::from(bounds.size.width),
-                height: f32::from(bounds.size.height),
-                maximized,
-            }
-        })
-        .ok()
+/// A window's geometry, in the form it is remembered in.
+pub(crate) fn window_state(window: &gpui::Window) -> WindowState {
+    let (bounds, maximized) = match window.window_bounds() {
+        WindowBounds::Windowed(bounds) => (bounds, false),
+        // Both remember the rectangle to un-maximize back to; only the
+        // maximized case reopens filling the screen.
+        WindowBounds::Maximized(bounds) => (bounds, true),
+        WindowBounds::Fullscreen(bounds) => (bounds, false),
+    };
+
+    WindowState {
+        x: f32::from(bounds.origin.x),
+        y: f32::from(bounds.origin.y),
+        width: f32::from(bounds.size.width),
+        height: f32::from(bounds.size.height),
+        maximized,
+    }
 }
 
 /// Writes a commented example `accounts.toml`, without clobbering a real one.
@@ -618,7 +620,7 @@ fn run_benchmark(count: usize) -> Result<()> {
     let store = Store::open(&path)?;
 
     let started = Instant::now();
-    spool_store::demo::populate(&store, count, 0x5EED)?;
+    spool_store::demo::populate(&store, count, spool_store::demo::SEED)?;
     let ingest = started.elapsed();
 
     println!("ingest        {count} messages in {:.2}s", ingest.as_secs_f64());

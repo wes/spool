@@ -550,6 +550,7 @@ impl Workspace {
         }
         cx.notify();
 
+        let added = index.is_none();
         cx.spawn(async move |this, cx| {
             let email = draft.email.clone();
             let written = cx
@@ -571,6 +572,7 @@ impl Workspace {
                 }
                 match written {
                     Ok(config) => {
+                        this.has_accounts = !config.accounts.is_empty();
                         if let Some(accounts) = this.accounts_mut() {
                             accounts.set_accounts(config.accounts);
                             accounts.editor = None;
@@ -587,6 +589,19 @@ impl Workspace {
                         // The sidebar shows accounts, so it is now stale.
                         this.refresh_folders(cx);
                         this.refresh_account_credentials(cx);
+
+                        if this.demo && this.settings.demo {
+                            // An account belongs in the real mailbox, and
+                            // that is where it gets synced: the copy that
+                            // opens there starts on it straight away.
+                            this.leave_demo(None, cx);
+                        } else if added {
+                            // A new account's mail, now rather than at the
+                            // next launch: on a first run, an empty window
+                            // after pressing Save reads as a failure.
+                            this.asked_for_sync = true;
+                            this.start_sync(spool_net::SyncMode::Everything, cx);
+                        }
                     }
                     Err(e) => {
                         if let Some(accounts) = this.accounts_mut() {
@@ -658,6 +673,7 @@ impl Workspace {
             None => None,
         };
 
+        self.has_accounts = !config.accounts.is_empty();
         if let Some(state) = self.accounts_mut() {
             state.set_accounts(config.accounts.clone());
             state.editor = None;
@@ -1805,7 +1821,7 @@ fn hint(theme: &Theme, text: impl Into<SharedString>) -> Div {
 /// gpui panics if a hover style is set twice on one element, so every variant
 /// has to set its hover exactly once, here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ButtonKind {
+pub(crate) enum ButtonKind {
     /// The action the pane is for. One per view.
     Primary,
     Secondary,
@@ -1813,7 +1829,7 @@ enum ButtonKind {
     Danger,
 }
 
-fn button(id: impl Into<gpui::ElementId>, theme: &Theme, kind: ButtonKind) -> Stateful<Div> {
+pub(crate) fn button(id: impl Into<gpui::ElementId>, theme: &Theme, kind: ButtonKind) -> Stateful<Div> {
     let base = div()
         .id(id)
         .flex()

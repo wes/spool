@@ -89,10 +89,56 @@ const SENTENCES: &[&str] = &[
 
 const CLOSERS: &[&str] = &["Thanks,", "Best,", "Cheers,", "Talk soon,", "\u{2014}"];
 
+/// The seed every demo mailbox is built from, so the one a visitor tries is
+/// the one the screenshots were taken of.
+pub const SEED: u64 = 0x5EED;
+
+/// Builds a complete demo mailbox at `path`: the messages, the people index,
+/// and a client book beside it, replacing whatever was there.
+///
+/// One function for both ways in — `spool --demo` and the welcome screen's
+/// button — so the two cannot drift into different demos. `progress` hears
+/// how many messages are written so far, a batch at a time.
+///
+/// Returns the store, already open, and how many clients the book holds.
+pub fn create(
+    path: &std::path::Path,
+    count: usize,
+    mut progress: impl FnMut(usize),
+) -> Result<(Store, usize)> {
+    let book_path = crate::book::Book::path_beside(path);
+    for file in [path, book_path.as_path()] {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", file.display()));
+        }
+    }
+
+    let store = Store::open(path)?;
+    // Indexed as it is written, whether or not Clients is on, so the book has
+    // people to be built from — and so a demo that adds Clients later finds
+    // it full.
+    store.set_people_index(true)?;
+    populate_with_progress(&store, count, SEED, &mut progress)?;
+
+    let book = crate::book::Book::open(&book_path)?;
+    let clients = populate_book(&store, &book)?;
+    Ok((store, clients))
+}
+
 /// Builds `count` messages spread across two accounts and their folders.
 ///
 /// Returns the accounts created, so the caller can select one.
 pub fn populate(store: &Store, count: usize, seed: u64) -> Result<Vec<AccountId>> {
+    populate_with_progress(store, count, seed, &mut |_| {})
+}
+
+/// As [`populate`], saying after each batch how many messages are written.
+pub fn populate_with_progress(
+    store: &Store,
+    count: usize,
+    seed: u64,
+    progress: &mut dyn FnMut(usize),
+) -> Result<Vec<AccountId>> {
     let mut rng = Rng(seed | 1);
 
     let work = store.add_account("Work", "wes@example.com", 0)?;
@@ -280,12 +326,14 @@ pub fn populate(store: &Store, count: usize, seed: u64) -> Result<Vec<AccountId>
         if batch.len() == BATCH {
             store.ingest(&batch)?;
             batch.clear();
+            progress(seq + 1);
         }
     }
 
     if !batch.is_empty() {
         store.ingest(&batch)?;
     }
+    progress(count);
 
     Ok(vec![work, personal])
 }
@@ -670,6 +718,33 @@ mod tests {
             distinct.len(),
             envelopes.len()
         );
+    }
+
+    #[test]
+    fn progress_counts_up_to_the_total() {
+        let store = Store::in_memory().unwrap();
+        let mut heard = Vec::new();
+        populate_with_progress(&store, 4_500, 5, &mut |done| heard.push(done)).unwrap();
+        assert_eq!(heard, vec![2_000, 4_000, 4_500]);
+    }
+
+    #[test]
+    fn create_replaces_what_was_there_and_writes_a_book_beside_it() {
+        let dir = std::env::temp_dir().join(format!("spool-demo-create-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mail.db");
+
+        let (store, _) = create(&path, 300, |_| {}).unwrap();
+        drop(store);
+        let (store, clients) = create(&path, 200, |_| {}).unwrap();
+
+        let all = store.envelopes(Scope::Everything, &Query::All, 1_000).unwrap().len();
+        assert_eq!(all, 200, "a second demo starts from empty, not on top of the first");
+        assert!(clients > 0, "the book has clients in it");
+        assert!(dir.join("clients.db").exists(), "the book sits beside the store");
+
+        drop(store);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

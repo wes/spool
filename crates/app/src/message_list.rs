@@ -579,6 +579,8 @@ impl Workspace {
             ("No matches", "Try fewer words, or narrow with an operator")
         } else if self.label_filter.is_some() {
             ("None of these", "Nothing here is this kind of message \u{2014} choose All to see the rest")
+        } else if self.is_first_run() {
+            ("No mail yet", "Your mail shows here once an account is added")
         } else {
             match self.filter {
                 crate::workspace::Filter::Unread => ("All caught up", "Nothing unread here"),

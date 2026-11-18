@@ -183,7 +183,12 @@ impl Workspace {
     /// composer with nothing to send it from is worse than the app it took
     /// the job from.
     pub(crate) fn offers_default_mail(&self) -> bool {
-        self.default_mail.can_claim() && !self.settings.default_mail_declined && !self.accounts.is_empty()
+        // Not from the demo: somebody trying Spool out has not decided to
+        // keep it yet, and their links should not start opening in it.
+        self.default_mail.can_claim()
+            && !self.settings.default_mail_declined
+            && !self.accounts.is_empty()
+            && !self.demo
     }
 
     /// The offer, at the foot of the sidebar.

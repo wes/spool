@@ -12,8 +12,13 @@ This is a working answer to that, at a scale where the answer means something.
 
 **[Download Spool](https://github.com/wes/spool-releases/releases/latest/download/Spool.dmg)**
 — macOS 13 or later, Apple silicon and Intel. Signed, notarized, and it
-updates itself. Or [build it from source](#building), or try it on a
-synthetic mailbox without connecting an account:
+updates itself.
+
+You don't have to connect an account to try it: the first window offers a
+**demo mailbox** of 50,000 made-up messages, kept apart from your own mail.
+Nothing in it syncs or sends, and one click at the foot of the sidebar takes
+you back out and deletes it. [Built from source](#building), you can make a
+bigger one:
 
 ```
 spool --demo 250000

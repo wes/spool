@@ -119,6 +119,7 @@ impl Workspace {
                     // an extension's panel is something about it.
                     .children(self.render_extension_panels(theme)),
             )
+            .children(self.render_demo_card(theme, cx))
             .children(self.render_default_mail_offer(theme, cx))
             .children(self.settings.clients.then(|| self.render_clients_row(theme, cx)))
             .children(self.render_update(theme, cx))

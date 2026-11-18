@@ -171,13 +171,19 @@ impl Workspace {
                     web_view.borrow_mut().hide();
                 }
 
-                div()
-                    .flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .child(div().text_color(theme.text_faint).child("Select a message"))
-                    .into_any_element()
+                // A new install has no message to select, and "Select a
+                // message" over an empty list is a dead end.
+                if self.is_first_run() {
+                    self.render_welcome(theme, cx)
+                } else {
+                    div()
+                        .flex()
+                        .flex_1()
+                        .items_center()
+                        .justify_center()
+                        .child(div().text_color(theme.text_faint).child("Select a message"))
+                        .into_any_element()
+                }
             }
 
             #[cfg(target_os = "macos")]

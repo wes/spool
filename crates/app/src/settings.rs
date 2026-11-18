@@ -83,6 +83,14 @@ pub struct Settings {
     /// offer that comes back every launch is a nag; Settings → Accounts keeps
     /// the button for a change of mind.
     pub default_mail_declined: bool,
+    /// Whether the mailbox to open is the demo, chosen on the welcome screen.
+    ///
+    /// Remembered, so quitting does not quietly put somebody back in an empty
+    /// window; the card at the foot of the sidebar is the way out. Written
+    /// only while true, so a file from a copy that never tried the demo still
+    /// loads in a version from before it existed.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub demo: bool,
     /// A setting that no longer exists: the sidebar's sort order, replaced by
     /// arranging the top-level folders by hand.
     ///
@@ -116,6 +124,7 @@ impl Default for Settings {
             scanning: Vec::new(),
             clients: false,
             default_mail_declined: false,
+            demo: false,
             retired_folder_sort: None,
         }
     }
@@ -808,6 +817,24 @@ mod tests {
     #[test]
     fn no_sender_is_trusted_with_images_until_one_is_named() {
         assert!(Settings::default().image_domains.is_empty());
+    }
+
+    #[test]
+    fn the_demo_is_written_only_while_it_is_on() {
+        let dir = temp_dir("demo");
+        let path = dir.join("settings.toml");
+
+        let mut settings = Settings::default();
+        settings.save_to(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("demo"),
+            "a copy that never tried the demo writes nothing a version before it would reject"
+        );
+
+        settings.demo = true;
+        settings.save_to(&path).unwrap();
+        assert!(Settings::load_from(&path).unwrap().demo);
     }
 
     #[test]

@@ -68,6 +68,10 @@ impl Workspace {
 
     /// Unsubscribes from the list one message came from.
     pub(crate) fn unsubscribe_from(&mut self, id: MessageId, cx: &mut Context<Self>) {
+        if self.demo {
+            self.say("The demo's mailing lists are made up, so there is nothing to leave", cx);
+            return;
+        }
         // A second press while the first is still going is the same request.
         if self.unsubscribe.as_ref().is_some_and(|u| u.message == id && u.stage == Stage::Working) {
             return;
