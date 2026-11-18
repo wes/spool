@@ -42,7 +42,7 @@ MEASURE="$HERE/measure"
 CALIBRATE="$HERE/calibrate"
 RUNS="${RUNS:-20}"
 SEARCH_TERM="${SEARCH_TERM:-postmortem}"
-SPOOL_DMG_URL="${SPOOL_DMG_URL:-https://github.com/wes/spool-releases/releases/latest/download/Spool.dmg}"
+SPOOL_DMG_URL="${SPOOL_DMG_URL:-https://github.com/wes/spool/releases/latest/download/Spool.dmg}"
 
 # The released app, installed the way anyone installs it, is what gets
 # measured — the same footing as every other client. A build of this checkout

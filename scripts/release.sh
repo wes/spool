@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cuts a release from this Mac: the version, the notes, a signed and notarized
-# disk image, the tag, and the release on wes/spool-releases.
+# disk image, the tag, and the release on this repository, wes/spool.
 #
 #   scripts/release.sh
 #
@@ -15,7 +15,7 @@
 #       xcrun notarytool store-credentials spool \
 #           --apple-id <your-apple-id> --team-id 288BJX6YHP
 #   - the Google OAuth client, in the keychain (see scripts/package.sh),
-#   - gh, logged in as someone who can write to wes/spool-releases.
+#   - gh, logged in as someone who can write to wes/spool.
 #
 # SPOOL_IDENTITY and NOTARY_PROFILE override the identity and profile.
 #
@@ -30,7 +30,7 @@ cd "$(dirname "$0")/.."
 
 PLIST=crates/app/bundle/Info.plist
 BRANCH=master
-RELEASES_REPO=wes/spool-releases
+RELEASES_REPO=wes/spool
 TEAM=288BJX6YHP
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }

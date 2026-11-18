@@ -1,5 +1,5 @@
 # Builds a signed, notarized Spool disk image on GitHub's macOS machines, and
-# with `publish` on, posts it to the public releases repository with the
+# with `publish` on, posts it as a release of this repository with the
 # CHANGELOG.md section for its version as the notes.
 #
 # The usual way to release is scripts/release.sh, on a Mac, which does all of
@@ -9,20 +9,23 @@ name: Release
 
 # Manual only. Releases are cut from a Mac with scripts/release.sh, which
 # builds, notarizes and publishes locally; this is the same thing on GitHub's
-# machines, kept for when that Mac is not to hand. A hosted macOS runner bills
-# its minutes at ten times the rate on a private repository, so a pushed tag
-# does not start one.
+# machines, kept for when that Mac is not to hand. A pushed tag does not start
+# one, because the script has already published by the time it pushes.
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish to the releases repo (otherwise build only)"
+        description: "Publish the release (otherwise build only)"
         type: boolean
         default: false
 
 env:
-  RELEASES_REPO: wes/spool-releases
   CARGO_TERM_COLOR: always
+
+# Creating a release and its tag is a write to this repository's contents, and
+# nothing else here needs more than to read them.
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -134,13 +137,12 @@ jobs:
             exit 1
           fi
 
-      # `gh release create` on another repository creates the tag there too,
-      # against its default branch. The releases repo has no source to tag, so
-      # the tag is a label on the download and nothing more.
-      - name: Publish to the releases repo
+      # A tag that does not exist yet is made on the commit that was just
+      # built, not on whatever the default branch has moved on to since.
+      - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="${{ steps.artifact.outputs.version }}"
@@ -148,7 +150,8 @@ jobs:
           # releases/latest/download/Spool.dmg link (see scripts/release.sh).
           cp "${{ steps.artifact.outputs.path }}" target/Spool.dmg
           gh release create "v$version" "${{ steps.artifact.outputs.path }}" target/Spool.dmg \
-            --repo "$RELEASES_REPO" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
             --title "Spool $version" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --latest

@@ -19,9 +19,9 @@ use crate::{
 };
 
 /// Where the releases, and what changed in each, are published.
-const RELEASES_URL: &str = "https://github.com/wes/spool-releases/releases";
+const RELEASES_URL: &str = "https://github.com/wes/spool/releases";
 /// Where problems are reported: the public repository's tracker.
-const ISSUES_URL: &str = "https://github.com/wes/spool-releases/issues";
+const ISSUES_URL: &str = "https://github.com/wes/spool/issues";
 
 pub struct AboutWindow {
     workspace: Entity<Workspace>,

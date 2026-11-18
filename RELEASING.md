@@ -1,14 +1,13 @@
 # Releasing
 
-Spool is developed in this repository and distributed from
-[`wes/spool-releases`](https://github.com/wes/spool-releases), which holds the
-signed disk images and nothing else. Installed copies check that repository
-for updates, so it is where every release has to land.
+Spool is developed and released in this repository: each release here
+carries the signed, notarized disk image, and installed copies check this
+repository's latest release for updates.
 
-Nothing is copied between the two by hand: one script cuts the release on a
-Mac and publishes it there. Cutting an official release needs the signing
-certificate and the credentials below, none of which are in this repository;
-building Spool for yourself needs none of them (see the README).
+One script cuts the release on a Mac and publishes it. Cutting an official
+release needs the signing certificate and the credentials below, none of which
+are in this repository; building Spool for yourself needs none of them (see the
+README).
 
 ## Cutting a release
 
@@ -25,7 +24,7 @@ what it is about to do, and on a yes:
    and the disk image, sends it to Apple for notarization and staples the
    ticket (`scripts/package.sh`, about 10–15 minutes);
 3. commits, tags `v<version>` and pushes both;
-4. creates the release on `wes/spool-releases` with the disk image and, as
+4. creates the release on `wes/spool` with the disk image and, as
    its notes, the `CHANGELOG.md` section for that version if there is one, or
    else the commit subjects since the last tag — the moment installed copies are offered
    it.
@@ -35,7 +34,7 @@ The disk image is uploaded twice: as `Spool-<version>.dmg`, and as
 assets at a fixed address, so this link is always the latest build:
 
 ```
-https://github.com/wes/spool-releases/releases/latest/download/Spool.dmg
+https://github.com/wes/spool/releases/latest/download/Spool.dmg
 ```
 
 It builds before it commits, so a failed build or notarization leaves the
@@ -75,7 +74,7 @@ changed since the tag.
 
 - **Xcode**, for `metal`, `codesign`, `notarytool`, `stapler` and `hdiutil`;
   **rustup**, which fetches the toolchain `rust-toolchain.toml` pins; and
-  **gh**, logged in as someone who can write to `wes/spool-releases`.
+  **gh**, logged in as someone who can write to `wes/spool`.
 
 `SPOOL_IDENTITY` and `NOTARY_PROFILE` override the certificate and the profile.
 
@@ -90,11 +89,9 @@ native architecture only, no Apple involved.
 `.github/workflows/release.yml` does the same build on GitHub's macOS machines,
 for when no Mac with the certificate is to hand. It only runs when started by
 hand, from the Actions tab: with **publish** off it uploads the disk image as a
-workflow artifact; with it on it publishes to the releases repo. Nothing starts
-it automatically: it was written when this repository was private, where a
-hosted macOS runner bills at ten times the Linux rate and one stalled
-notarization used up a month of minutes, and a release is still meant to be a
-deliberate act rather than a side effect of a push.
+workflow artifact; with it on it publishes the release here, using the
+workflow's own token. Nothing starts it automatically: a release is meant to be
+a deliberate act rather than a side effect of a push.
 
 ## Entitlements
 
@@ -144,7 +141,9 @@ repository.
 | `APPLE_TEAM_ID` | `288BJX6YHP`. |
 | `SPOOL_GOOGLE_CLIENT_ID` | The Google OAuth Desktop app client ID, compiled into the build. |
 | `SPOOL_GOOGLE_CLIENT_SECRET` | That client's secret. |
-| `RELEASES_TOKEN` | A fine-grained personal access token scoped to `wes/spool-releases` alone, with **Contents: read and write**. This is the only credential that can reach outside this repository, so it is worth keeping narrow. |
+
+Publishing needs no secret of its own: the release is created in this
+repository, which the workflow's `GITHUB_TOKEN` can write to.
 
 The certificate expires; Developer ID certificates last five years and the
 workflow will start failing on the day it does, with a signing error that does
@@ -152,7 +151,7 @@ not say so. Re-export and replace the two `MACOS_CERTIFICATE_*` secrets.
 
 ## How an installed copy updates itself
 
-Spool checks `wes/spool-releases` for a newer release on launch, and from
+Spool checks this repository for a newer release on launch, and from
 **Spool → Check for Updates…** on demand. What it finds appears at the foot of
 the sidebar; nothing is downloaded, and nothing is replaced, until it is
 pressed.
@@ -177,11 +176,15 @@ stays invisible to installed copies.
 A copy that cannot replace itself — a `cargo run` build, or an app installed
 somewhere the user cannot write — says so and offers the release page instead.
 
-## What the public repo contains
+## The old releases repository
 
-Its README, a copy of the changelog, and the releases. It is also where issues
-are filed, because the tracker has to be somewhere a user can reach.
+Up to 0.1.15, releases went to
+[`wes/spool-releases`](https://github.com/wes/spool-releases), a public repo
+that held only disk images while this one was private. Every copy of those
+versions still checks there for updates, and nothing can change that now.
 
-Keeping its changelog in step is a manual copy for now — one file, at the
-moment a release goes out. If it starts being forgotten, the workflow is the
-place to fix it.
+So it stays, archived rather than deleted, with **0.1.16 as its last
+release**: the same disk image as 0.1.16 here. An old copy finds it there,
+updates, and from then on checks this repository instead. Deleting the
+repository, or that release, would leave every older copy unable to update
+again. Nothing new is ever published there.

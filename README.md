@@ -10,7 +10,7 @@ This is a working answer to that, at a scale where the answer means something.
 
 ![Spool, showing a demo mailbox](docs/screenshot.png)
 
-**[Download Spool](https://github.com/wes/spool-releases/releases/latest/download/Spool.dmg)**
+**[Download Spool](https://github.com/wes/spool/releases/latest/download/Spool.dmg)**
 — macOS 13 or later, Apple silicon and Intel. Signed, notarized, and it
 updates itself.
 

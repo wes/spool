@@ -1,7 +1,7 @@
 //! Finding, checking and installing a newer Spool.
 //!
-//! Spool is distributed as a signed, notarized disk image on the public
-//! releases repo — see `RELEASING.md`. That is the whole supply chain, and it
+//! Spool is distributed as a signed, notarized disk image, attached to a
+//! release on its own repository — see `RELEASING.md`. That is the whole supply chain, and it
 //! is also the whole trust story: the only thing this module will install is a
 //! bundle Apple has notarized and whose leaf certificate carries the same team
 //! identifier as the copy that is running. Anything else is a download that
@@ -23,10 +23,13 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-/// Where releases are published. The public half of the split described in
-/// `RELEASING.md`; this repository is private and has no releases of its own.
+/// Where releases are published: the source repository's own releases.
+///
+/// Up to 0.1.15 they went to `wes/spool-releases` instead, and every copy of
+/// those versions still asks there. That repository is kept, archived, with
+/// 0.1.16 as its last release — the one that brings an old copy here.
 const RELEASES_API: &str =
-    "https://api.github.com/repos/wes/spool-releases/releases/latest";
+    "https://api.github.com/repos/wes/spool/releases/latest";
 
 /// The team the running copy was signed by, and the only team whose builds
 /// will be installed over it.
@@ -536,7 +539,7 @@ mod tests {
         serde_json::from_str(&format!(
             r#"{{
                 "tag_name": "{tag}",
-                "html_url": "https://github.com/wes/spool-releases/releases/tag/{tag}",
+                "html_url": "https://github.com/wes/spool/releases/tag/{tag}",
                 "body": "  Fixed a thing.  ",
                 {extra}
                 "assets": [
