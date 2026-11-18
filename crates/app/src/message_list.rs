@@ -146,10 +146,11 @@ impl Workspace {
             .w(px(self.list_width()))
             .flex_shrink_0()
             .h_full()
-            // The list and the reader are one surface with a rule between
-            // them, distinct from the sidebar's panel. That is the native
-            // arrangement: chrome on the left, content on the right.
-            .bg(theme.background)
+            // No background of its own: the card it sits in already paints
+            // one, with the rounded corner the list starts in. gpui clips a
+            // child to its parent's rectangle and not to its corners, so a
+            // fill here was a square drawn over that curve — visible as a
+            // corner poking out past the border (wes/spool#1).
             .border_r_1()
             .border_color(theme.border)
             .child(self.render_list_header(theme, cx))
