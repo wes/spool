@@ -516,9 +516,6 @@ Presets for iCloud, Outlook, Fastmail and Yahoo are written but commented out
 in `crates/net/src/config.rs`; those accounts work today through *Other*, and
 turning a preset back on is uncommenting it.
 
-Sending is not built yet, so SMTP settings are stored and verified but not
-otherwise used.
-
 Sync is local-first: the first pass pulls the newest `initial_limit` messages
 per folder (not a decade of archive before you can read today's mail), and
 later passes ask only for UIDs above the highest one stored — one round trip,
@@ -863,10 +860,9 @@ identity does not.
   the other direction is not. Sync only asks for UIDs above the highest one it
   has, so a message you archived on your phone stays in the inbox here until
   something else moves it.
-- **One draft at a time.** The composer holds a single message, and so does
-  the store: opening a reply while something unfinished is on screen replaces
-  it, the same as before drafts were persisted. A drafts *list*, and syncing to
-  the IMAP Drafts folder, are still to come.
+- **No drafts list.** Unfinished drafts are kept, and `cmd-shift-d` picks
+  them back up, but there is nowhere to browse them yet, and they are not
+  synced to the IMAP Drafts folder.
 - **A permanent delete cannot be undone.** Deleting out of the Trash removes
   the row, its body and its attachments; everywhere else delete means move to
   Trash, which undo covers.
