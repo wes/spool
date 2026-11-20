@@ -1,9 +1,34 @@
 # Changelog
 
 A section here for a version, if there is one, is its release notes;
-`scripts/release.sh` posts it verbatim to the releases repo. Without one, the
+`scripts/release.sh` posts it verbatim as the release's notes. Without one, the
 notes are the commit subjects since the last tag. Write for someone who has the
 app and not the source: what changed for them, not which files moved.
+
+## 0.1.16
+
+Spool is open source, at https://github.com/wes/spool. Releases come from
+there now too, and so do updates.
+
+**If you have 0.1.15 or earlier, install this one by hand.** Spool is now
+signed by JOE DESIGNS LLC, and older copies only accept updates signed the old
+way, so they will not offer it: download it below and drag it over the copy
+in Applications. Your accounts, mail and settings stay where they are. Updates
+after this one arrive as usual.
+
+**Try it without an account.** A new install opens on a welcome screen that
+offers a demo mailbox: 50,000 made-up messages, kept apart from your own mail.
+Nothing in it syncs or sends. Use My Own Mail, at the foot of the sidebar,
+takes you back out and deletes it.
+
+**A new account syncs straight away.** Saving one in Settings → Accounts now
+starts fetching its mail, rather than waiting for the next launch.
+
+**Fixed:** the corner of the message list showed past the rounded edge of the
+pane it sits in ([#1](https://github.com/wes/spool/issues/1)).
+
+**Fixed:** the signature box in Settings → Accounts drew its text in black,
+unreadable on the dark theme.
 
 ## 0.1.15
 
