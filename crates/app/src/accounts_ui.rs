@@ -21,7 +21,12 @@ use spool_net::{
 };
 use spool_store::Scope;
 
-use crate::{text_area::TextArea, text_input::TextInput, theme::Theme, workspace::Workspace};
+use crate::{
+    text_area::{AreaStyle, TextArea},
+    text_input::TextInput,
+    theme::Theme,
+    workspace::Workspace,
+};
 
 /// Every text field in the editor, in tab order.
 ///
@@ -1357,6 +1362,13 @@ impl Workspace {
         // ask about is the person, not the plumbing.
         let preset = provider.is_preset();
         let busy = editor.busy;
+        // The signature is shaped outside the element tree's text style, so
+        // without the theme's ink it is the window's default black, whatever
+        // the theme. Set on every render so a theme change follows it.
+        editor.signature.update(cx, |area, cx| {
+            area.set_style(AreaStyle { ink: Some(theme.text), ..Default::default() }, cx)
+        });
+        let signature_focused = editor.signature.read(cx).focus_handle.is_focused(window);
 
         div()
             .flex()
@@ -1515,7 +1527,11 @@ impl Workspace {
                             .rounded_md()
                             .bg(theme.background)
                             .border_1()
-                            .border_color(theme.border)
+                            .border_color(if signature_focused {
+                                theme.focus_ring
+                            } else {
+                                theme.border
+                            })
                             .child(editor.signature.clone()),
                     )
                     .child(hint(
