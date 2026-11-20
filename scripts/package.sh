@@ -14,7 +14,7 @@
 # What it needs, in the environment:
 #
 #   SPOOL_IDENTITY   the Developer ID, e.g.
-#                    "Developer ID Application: Wes Edling (288BJX6YHP)"
+#                    "Developer ID Application: JOE DESIGNS LLC (ULMVR3KWCR)"
 #
 #   SPOOL_GOOGLE_CLIENT_ID  SPOOL_GOOGLE_CLIENT_SECRET
 #                    the Google OAuth client, compiled in. The source leaves

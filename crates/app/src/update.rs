@@ -26,8 +26,9 @@ use anyhow::{Context, Result, bail};
 /// Where releases are published: the source repository's own releases.
 ///
 /// Up to 0.1.15 they went to `wes/spool-releases` instead, and every copy of
-/// those versions still asks there. That repository is kept, archived, with
-/// 0.1.16 as its last release — the one that brings an old copy here.
+/// those versions still asks there. Those copies trust only the team that
+/// signed them, not [`TEAM_ID`], so there is nothing they could install from
+/// here: that repository stays archived at 0.1.15, and they update by hand.
 const RELEASES_API: &str =
     "https://api.github.com/repos/wes/spool/releases/latest";
 
@@ -37,7 +38,12 @@ const RELEASES_API: &str =
 /// Hard-coded rather than read from the running bundle. Reading it would mean
 /// an attacker who could replace the app once could then nominate their own
 /// team for every update after — the check would pass while meaning nothing.
-const TEAM_ID: &str = "288BJX6YHP";
+///
+/// From 0.1.16. Up to 0.1.15 Spool was signed by an individual team,
+/// `288BJX6YHP`, and those copies pin that team instead; a build from this one
+/// is, to them, signed by someone else. Changing this again strands every copy
+/// that has it in the same way.
+const TEAM_ID: &str = "ULMVR3KWCR";
 
 /// A ceiling on the disk image, so a hostile or broken host cannot stream
 /// unbounded bytes into memory. The real thing is around 30 MB.
@@ -265,7 +271,8 @@ pub fn verify(dmg: &Path) -> Result<Mounted> {
 /// The code requirement that pins a bundle to this team.
 ///
 /// The team identifier is quoted because the requirement language reads an
-/// unquoted `288BJX6YHP` as a number followed by junk, and rejects the whole
+/// unquoted one that starts with a digit — `288BJX6YHP`, the team before
+/// this one — as a number followed by junk, and rejects the whole
 /// string as a syntax error — which `codesign` reports exactly as it reports
 /// a bundle signed by someone else.
 fn requirement() -> String {

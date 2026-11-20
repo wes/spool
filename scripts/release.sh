@@ -13,7 +13,7 @@
 #   - the Developer ID certificate in the keychain,
 #   - notarization credentials saved as a keychain profile:
 #       xcrun notarytool store-credentials spool \
-#           --apple-id <your-apple-id> --team-id 288BJX6YHP
+#           --apple-id <your-apple-id> --team-id ULMVR3KWCR
 #   - the Google OAuth client, in the keychain (see scripts/package.sh),
 #   - gh, logged in as someone who can write to wes/spool.
 #
@@ -31,7 +31,7 @@ cd "$(dirname "$0")/.."
 PLIST=crates/app/bundle/Info.plist
 BRANCH=master
 RELEASES_REPO=wes/spool
-TEAM=288BJX6YHP
+TEAM=ULMVR3KWCR
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }

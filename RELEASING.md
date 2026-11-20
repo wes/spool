@@ -46,16 +46,18 @@ changed since the tag.
 
 ## What the Mac needs, once
 
-- **The Developer ID certificate** — "Developer ID Application: Wes Edling
-  (288BJX6YHP)" — in the login keychain. The team is checked: installed copies
-  refuse an update signed by any other.
+- **The Developer ID certificate** — "Developer ID Application: JOE DESIGNS
+  LLC (ULMVR3KWCR)" — in the login keychain, private key and all. The team is
+  checked: installed copies refuse an update signed by any other. Only the
+  team's Account Holder can make one: Xcode → Settings → Accounts → the team →
+  Manage Certificates → + → Developer ID Application.
 - **Notarization credentials**, saved in the keychain. Interactive, and asks
   for an app-specific password from
   [appleid.apple.com](https://appleid.apple.com/account/manage):
 
   ```sh
   xcrun notarytool store-credentials spool \
-      --apple-id <your-apple-id> --team-id 288BJX6YHP
+      --apple-id <your-apple-id> --team-id ULMVR3KWCR
   ```
 
 - **The Google OAuth client**, saved in the keychain. The source leaves it
@@ -135,10 +137,10 @@ repository.
 |---|---|
 | `MACOS_CERTIFICATE_P12` | The Developer ID Application certificate and its private key, exported from Keychain Access as a `.p12`, then `base64 -i cert.p12 \| pbcopy`. |
 | `MACOS_CERTIFICATE_PASSWORD` | The password set when exporting that `.p12`. |
-| `SPOOL_IDENTITY` | `Developer ID Application: Wes Edling (288BJX6YHP)` — the name `codesign` matches against, exactly as `security find-identity -v -p codesigning` prints it. |
-| `APPLE_ID` | The Apple ID the Developer ID belongs to. |
+| `SPOOL_IDENTITY` | `Developer ID Application: JOE DESIGNS LLC (ULMVR3KWCR)` — the name `codesign` matches against, exactly as `security find-identity -v -p codesigning` prints it. |
+| `APPLE_ID` | An Apple ID on the JOE DESIGNS LLC team. |
 | `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID. Not the account password; notarization refuses it. |
-| `APPLE_TEAM_ID` | `288BJX6YHP`. |
+| `APPLE_TEAM_ID` | `ULMVR3KWCR`. |
 | `SPOOL_GOOGLE_CLIENT_ID` | The Google OAuth Desktop app client ID, compiled into the build. |
 | `SPOOL_GOOGLE_CLIENT_SECRET` | That client's secret. |
 
@@ -161,7 +163,7 @@ copy will fetch and run. Three things the release already does are what make
 that safe, and an update refuses to install if any of them is missing:
 
 - the bundle's signature is intact (`codesign --verify --deep --strict`),
-- its leaf certificate is team `288BJX6YHP` — a valid Developer ID only proves
+- its leaf certificate is team `ULMVR3KWCR` — a valid Developer ID only proves
   that *somebody* signed it,
 - and Apple has notarized it (`spctl --assess`).
 
@@ -176,15 +178,20 @@ stays invisible to installed copies.
 A copy that cannot replace itself — a `cargo run` build, or an app installed
 somewhere the user cannot write — says so and offers the release page instead.
 
-## The old releases repository
+## Copies from before 0.1.16
 
-Up to 0.1.15, releases went to
-[`wes/spool-releases`](https://github.com/wes/spool-releases), a public repo
-that held only disk images while this one was private. Every copy of those
-versions still checks there for updates, and nothing can change that now.
+Up to 0.1.15, Spool was signed by an individual team, `288BJX6YHP`, and
+released to [`wes/spool-releases`](https://github.com/wes/spool-releases), a
+public repo that held only disk images while this one was private. Those
+copies check that repository for updates and accept only builds from that
+team, and nothing can change either now.
 
-So it stays, archived rather than deleted, with **0.1.16 as its last
-release**: the same disk image as 0.1.16 here. An old copy finds it there,
-updates, and from then on checks this repository instead. Deleting the
-repository, or that release, would leave every older copy unable to update
-again. Nothing new is ever published there.
+0.1.16 moved to the JOE DESIGNS LLC team, so no release from here is one an
+older copy could install: it would download it and refuse it as signed by
+someone else. Rather than offer them that, `wes/spool-releases` is archived
+with 0.1.15 as its last release, and older copies go on reporting that they
+are up to date. Moving to 0.1.16 is a download by hand, once; from then on
+updates arrive as usual.
+
+Nothing is ever published there again. A release there now would be offered
+to every older copy and fail on every one of them.
