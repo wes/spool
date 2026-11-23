@@ -34,13 +34,18 @@ for arg in "$@"; do
 	esac
 done
 
-# The first Developer ID on the machine, if there is one. Its name is what
-# `codesign` matches, so it is taken whole from the line rather than parsed.
-identity=$(
+# SPOOL_IDENTITY if set; otherwise the Developer ID from the team official
+# builds are signed by (TEAM_ID in update.rs), so this copy reaches the
+# keychain items the released app already has; otherwise the first Developer
+# ID on the machine. Its name is what `codesign` matches, so it is taken whole
+# from the line rather than parsed.
+team=$(sed -n 's/^const TEAM_ID: &str = "\(.*\)";/\1/p' "$root/crates/app/src/update.rs")
+identities=$(
 	security find-identity -v -p codesigning 2>/dev/null \
-		| sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' \
-		| head -1
+		| sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p'
 )
+preferred=$(printf '%s\n' "$identities" | grep -F "($team)" | head -1)
+identity=${SPOOL_IDENTITY:-${preferred:-$(printf '%s\n' "$identities" | head -1)}}
 if [ -n "$identity" ]; then
 	echo "signing as: $identity"
 else
@@ -48,6 +53,21 @@ else
 	echo "signing ad-hoc: no Developer ID on this machine."
 	echo "  The keychain will ask for your mail passwords again after a rebuild."
 fi
+
+# The Google OAuth client, from the environment or from where package.sh keeps
+# it. Without one this build cannot refresh a Gmail sign-in made by an
+# official build, since Google ties a refresh token to the client it was
+# issued to.
+keychain_value() {
+	security find-generic-password -s spool-release -a "$1" -w 2>/dev/null || true
+}
+SPOOL_GOOGLE_CLIENT_ID=${SPOOL_GOOGLE_CLIENT_ID:-$(keychain_value google-client-id)}
+SPOOL_GOOGLE_CLIENT_SECRET=${SPOOL_GOOGLE_CLIENT_SECRET:-$(keychain_value google-client-secret)}
+if [ -z "$SPOOL_GOOGLE_CLIENT_ID" ] || [ -z "$SPOOL_GOOGLE_CLIENT_SECRET" ]; then
+	echo "no Google OAuth client: Gmail accounts will not be able to sign in."
+	echo "  See \"The Google OAuth client\" in README.md."
+fi
+export SPOOL_GOOGLE_CLIENT_ID SPOOL_GOOGLE_CLIENT_SECRET
 
 if [ "$build" = "1" ]; then
 	SPOOL_IDENTITY="$identity" sh "$root/scripts/bundle.sh"
