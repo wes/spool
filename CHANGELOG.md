@@ -5,6 +5,49 @@ A section here for a version, if there is one, is its release notes;
 notes are the commit subjects since the last tag. Write for someone who has the
 app and not the source: what changed for them, not which files moved.
 
+## 0.1.17
+
+**Claude, as well as ChatGPT.** Settings → AI can now use Claude, with an API
+key from Anthropic, for everything ChatGPT does in Spool. Use either one, and
+choose the model too.
+
+**Priority.** Turn on "Sort new mail by priority" in Settings → AI, and the AI
+you chose reads new mail in your inboxes to decide whether it needs you, and
+what for. The ★ button above the message list, or `p`, then narrows any
+mailbox to that mail; in All Mail, it shows every inbox's. `shift-p` marks a
+message as priority or takes it out, and the sort learns to do the same with
+that sender's mail. Mail from mailing lists is sorted without being sent to
+the AI.
+
+**Quick replies.** With Priority on, mail that wants an answer comes with
+three short replies, written ahead of time and shown above the message. Click
+one, or press `1`, `2` or `3`, to open it as a reply, ready to change and
+send.
+
+**A reminder when nobody replies.** Turn on "Remind me when nobody replies" in
+Settings → AI, and Spool watches the mail you send for an answer. If none comes
+in 3 days, the AI checks whether you were expecting one. If you were, the
+message waits in a strip above the list with a follow-up already written:
+Nudge opens it, and Done lets it go. A chip beside Send changes the wait for
+one message to 1 day, 3 days, a week, or no reminder.
+
+All three are off until you turn them on, and nothing is ever sent without
+you.
+
+**Fixed:** a long message in the composer ran past the bottom of the window
+instead of scrolling. Now it scrolls, and keeps the cursor in view as you type.
+
+**Smaller things:**
+
+- The arrows that fold and unfold folders in the sidebar are bigger and
+  clearer.
+- The ★ and flag buttons above the list no longer move when the message count
+  beside them changes.
+- The Clients row at the foot of the sidebar is gone; the person button at the
+  end of the toolbar opens Clients.
+- The + at the end of each account is gone too. To make a folder, right-click
+  the account, or choose File → New Folder.
+
 ## 0.1.16
 
 Spool is open source, at https://github.com/wes/spool. Releases come from

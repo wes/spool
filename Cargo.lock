@@ -5840,7 +5840,7 @@ dependencies = [
 
 [[package]]
 name = "spool"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "block2",
@@ -5867,7 +5867,7 @@ dependencies = [
 
 [[package]]
 name = "spool-bench"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "rusqlite",
@@ -5879,7 +5879,7 @@ dependencies = [
 
 [[package]]
 name = "spool-core"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "mail-parser",
@@ -5889,7 +5889,7 @@ dependencies = [
 
 [[package]]
 name = "spool-ext"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "log",
@@ -5904,7 +5904,7 @@ dependencies = [
 
 [[package]]
 name = "spool-net"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "async-imap",
@@ -5922,7 +5922,7 @@ dependencies = [
 
 [[package]]
 name = "spool-store"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "log",
