@@ -17,7 +17,9 @@
 //!   as much work as one spanning three characters.
 //!
 //! The element grows to fit its content and expects an ancestor to scroll,
-//! which is why there is no viewport arithmetic here.
+//! which is why there is no viewport arithmetic here beyond one thing: an
+//! owner that hands over that ancestor's [`ScrollHandle`] with
+//! [`TextArea::follow_with`] gets it scrolled to keep the caret in sight.
 
 use std::ops::Range;
 
@@ -27,7 +29,7 @@ use gpui::{
     Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontWeight, GlobalElementId,
     LayoutId,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
-    SharedString, Style, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window,
+    ScrollHandle, SharedString, Style, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window,
     WrappedLine, actions, fill, point, prelude::*, px, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -246,6 +248,13 @@ pub struct TextArea {
     /// Set for text that is there to be read and copied, not edited.
     read_only: Option<ReadOnly>,
     history: History,
+    /// The scrolling box this sits in, when its owner wants the caret kept
+    /// in view. See [`TextArea::follow_with`].
+    follow: Option<ScrollHandle>,
+    /// Set by anything from the keyboard that moves the caret, and taken by
+    /// the next prepaint, which scrolls `follow` to show it. A click does not
+    /// set it: what was clicked is already on screen.
+    reveal: bool,
 }
 
 /// How much one click selects, and so how much a drag after it grows by.
@@ -333,7 +342,15 @@ impl TextArea {
             blink: Blink::default(),
             read_only: None,
             history: History::default(),
+            follow: None,
+            reveal: false,
         }
+    }
+
+    /// Keeps the caret in view of `scroll`, the handle tracked by the box
+    /// that scrolls this area, as typing and the arrow keys move it.
+    pub fn follow_with(&mut self, scroll: ScrollHandle) {
+        self.follow = Some(scroll);
     }
 
     /// An area for reading: selectable and copyable, with no caret and no
@@ -716,6 +733,7 @@ impl TextArea {
         self.marked_range = None;
         self.goal_x = None;
         self.history.edited(kind, cursor);
+        self.reveal = true;
 
         self.blink.wake(cx);
         cx.emit(AreaChanged);
@@ -750,6 +768,7 @@ impl TextArea {
         self.selection_reversed = false;
         self.marked_range = None;
         self.goal_x = None;
+        self.reveal = true;
         self.blink.wake(cx);
         cx.emit(AreaChanged);
         cx.notify();
@@ -936,6 +955,7 @@ impl TextArea {
         self.selection_reversed = false;
         // Any horizontal or absolute move forgets the column being aimed for.
         self.goal_x = None;
+        self.reveal = true;
         self.blink.wake(cx);
         cx.notify();
     }
@@ -958,6 +978,7 @@ impl TextArea {
             self.selection_reversed = !self.selection_reversed;
             self.selected_range = self.selected_range.end..self.selected_range.start;
         }
+        self.reveal = true;
         self.blink.wake(cx);
         cx.notify();
     }
@@ -1180,6 +1201,7 @@ impl EntityInputHandler for TextArea {
                 let cursor = range.start + new_text.len();
                 cursor..cursor
             });
+        self.reveal = true;
 
         self.blink.wake(cx);
         cx.emit(AreaChanged);
@@ -1393,10 +1415,37 @@ impl Element for AreaElement {
         _: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
         let accent = self.theme.accent;
+
+        // Where the caret now is, if a keystroke moved it and there is a box
+        // to scroll to it.
+        let reveal = self.area.update(cx, |area, _| {
+            if !area.reveal {
+                return None;
+            }
+            let found = area.follow.clone().zip(area.point_for_offset(area.cursor()));
+            if found.is_none() {
+                area.reveal = false;
+            }
+            found.map(|(follow, at)| (follow, bounds.origin.y + at.y, area.layout.line_height))
+        });
+        if let Some((follow, top, line_height)) = reveal {
+            let (view, offset, max) = (follow.bounds(), follow.offset(), follow.max_offset().height);
+            match offset_revealing(view, offset, max, top, line_height) {
+                // Too late to move what this frame has already placed, so the
+                // next one draws at the new offset — and checks again, since
+                // a window still settling its layout can take it back.
+                Some(offset) => {
+                    follow.set_offset(offset);
+                    window.request_animation_frame();
+                }
+                // In view, or as near as the box can scroll.
+                None => self.area.update(cx, |area, _| area.reveal = false),
+            }
+        }
 
         let caret = self.area.update(cx, |area, _| {
             area.layout.bounds = Some(bounds);
@@ -1517,6 +1566,34 @@ impl TextArea {
 }
 
 /// Shapes the content into rows.
+/// The scroll offset that shows a caret whose top is at `top` (in window
+/// coordinates) with a line of room on either side, or `None` when it is
+/// already in view.
+///
+/// `view` is the scrolling box, `offset` its current scroll (zero or less, as
+/// gpui counts it) and `max` how far it can scroll. Moves only as far as it
+/// must, the way every editor scrolls while you type: down until the caret's
+/// line clears the bottom, or up until it clears the top.
+fn offset_revealing(
+    view: Bounds<Pixels>,
+    current: Point<Pixels>,
+    max: Pixels,
+    top: Pixels,
+    line_height: Pixels,
+) -> Option<Point<Pixels>> {
+    let mut offset = current;
+    let bottom = top + line_height;
+    if bottom + line_height > view.bottom() {
+        offset.y -= bottom + line_height - view.bottom();
+    } else if top - line_height < view.top() {
+        offset.y += view.top() - (top - line_height);
+    } else {
+        return None;
+    }
+    offset.y = offset.y.clamp(-max, px(0.));
+    (offset != current).then_some(offset)
+}
+
 fn shape(
     request: ShapeRequest,
     wrap_width: Option<Pixels>,
@@ -1640,7 +1717,12 @@ impl Render for TextArea {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .size_full()
+            // At least as tall as the box it is in, so a click anywhere in
+            // the box lands in it, and taller when the text is: a box that
+            // scrolls only knows how far from the height of what is in it,
+            // and at `size_full` that was never more than the box itself.
+            .w_full()
+            .min_h_full()
             // No colour of its own: the text takes whatever the element it
             // sits in is using, which is what lets the composer put a white
             // page under it without the area insisting on the theme's ink.
@@ -1763,6 +1845,44 @@ mod tests {
         assert_eq!(&text[word_range(text, 10)], "line");
         assert_eq!(&text[word_range(text, 12)], "second");
         assert_eq!(word_range("a\n\nb", 2), 2..2, "an empty line has no word");
+    }
+
+    fn a_box(top: f32, height: f32) -> Bounds<Pixels> {
+        Bounds::new(point(px(0.), px(top)), size(px(400.), px(height)))
+    }
+
+    #[test]
+    fn a_caret_in_view_scrolls_nothing() {
+        let view = a_box(100., 300.);
+        assert_eq!(offset_revealing(view, point(px(0.), px(0.)), px(500.), px(200.), px(18.)), None);
+    }
+
+    #[test]
+    fn a_caret_past_the_bottom_scrolls_down_just_enough_to_show_it() {
+        // The box ends at 400; a caret line from 420 to 438 needs another
+        // line of room below it, so the page moves up by 438 + 18 - 400.
+        let view = a_box(100., 300.);
+        let offset = offset_revealing(view, point(px(0.), px(0.)), px(500.), px(420.), px(18.));
+        assert_eq!(offset, Some(point(px(0.), px(-56.))));
+    }
+
+    #[test]
+    fn a_caret_above_the_top_scrolls_back_up_to_it() {
+        let view = a_box(100., 300.);
+        let offset = offset_revealing(view, point(px(0.), px(-200.)), px(500.), px(60.), px(18.));
+        assert_eq!(offset, Some(point(px(0.), px(-142.))));
+    }
+
+    #[test]
+    fn scrolling_to_the_caret_stays_within_what_the_box_can_scroll() {
+        let view = a_box(100., 300.);
+        // Past the end of what can scroll: held at the end.
+        let down = offset_revealing(view, point(px(0.), px(-90.)), px(100.), px(900.), px(18.));
+        assert_eq!(down, Some(point(px(0.), px(-100.))));
+        // Already at the end: nothing to do.
+        assert_eq!(offset_revealing(view, point(px(0.), px(-100.)), px(100.), px(900.), px(18.)), None);
+        // Above the top with the page already at the top: nothing to do.
+        assert_eq!(offset_revealing(view, point(px(0.), px(0.)), px(100.), px(90.), px(18.)), None);
     }
 
     #[test]

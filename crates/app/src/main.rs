@@ -41,6 +41,8 @@ mod menus;
 mod message_view;
 mod palette;
 mod perf;
+mod priority;
+mod follow_up;
 mod query_worker;
 mod recipients;
 mod scrollbar;
@@ -259,7 +261,7 @@ fn main() -> Result<()> {
         menus::bind_keys(cx);
         menus::init(settings.clients, cx);
         cx.set_global(ActiveTheme(Theme::new(settings.theme)));
-        assist::init(settings.writing_model.clone(), cx);
+        assist::init(&settings, cx);
 
         // Size to the display rather than to a fixed guess: a three-pane
         // layout needs width, but a window larger than the screen is worse

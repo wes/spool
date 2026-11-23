@@ -1,0 +1,16 @@
+<!--
+  A folder's disclosure triangle while it is folded: a chevron rather than
+  the ▸ character, which at sidebar size is three pixels across and leaves
+  people squinting at which way it points.
+
+  Drawn in the same line as the paperclip and the person, rounded at the
+  ends. gpui rasterises this to an alpha mask and tints it with the
+  element's text colour; the stroke colour only makes the file valid.
+-->
+<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M6 3.5 L10.5 8 L6 12.5"
+        stroke="#000"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

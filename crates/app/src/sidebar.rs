@@ -121,58 +121,7 @@ impl Workspace {
             )
             .children(self.render_demo_card(theme, cx))
             .children(self.render_default_mail_offer(theme, cx))
-            .children(self.settings.clients.then(|| self.render_clients_row(theme, cx)))
             .children(self.render_update(theme, cx))
-    }
-
-    /// Clients, once it has been added: a link to its window, pinned under
-    /// the folders rather than after them, because with a few accounts open
-    /// the end of the folders is a long scroll away. Laid out as a folder row
-    /// so it lines up with them.
-    ///
-    /// Never selected, and not on the keyboard's path through the sidebar:
-    /// the arrows select what they land on, and landing here would open a
-    /// window.
-    fn render_clients_row(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .flex_shrink_0()
-            .px_2()
-            .pt_1()
-            .child(
-                div()
-                    .id("sidebar-clients")
-                    .flex()
-                    .items_center()
-                    .gap_1p5()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    .cursor_pointer()
-                    // The same transparent border as a folder row, so the two
-                    // line up to the pixel.
-                    .border_1()
-                    .border_color(gpui::transparent_black())
-                    .hover(|s| s.bg(theme.hover))
-                    .on_click(cx.listener(|this, _, _, cx| this.open_clients(cx)))
-                    .child(div().w(px(TWISTY_WIDTH)).flex_shrink_0())
-                    .child(
-                        div().w(px(14.)).flex_shrink_0().child(
-                            gpui::svg()
-                                .path(crate::icons::PERSON)
-                                .size(px(13.))
-                                .text_color(theme.text_faint),
-                        ),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(theme.text_muted)
-                            .child("Clients"),
-                    ),
-            )
-            .into_any_element()
     }
 
     /// What extensions contribute to the sidebar.
@@ -314,8 +263,17 @@ impl Workspace {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let unread: u32 = self.mailboxes.iter().map(|m| m.unread).sum();
-        let total: u32 = self.mailboxes.iter().map(|m| m.total).sum();
+        // What the row lists, which is every inbox. Summing every folder
+        // counted Junk, Trash and, on Gmail, the second copy of each message
+        // kept in its All Mail folder.
+        let inboxes = || {
+            self.mailboxes
+                .iter()
+                .filter(|m| m.role == MailboxRole::Inbox)
+        };
+        let unread: u32 = inboxes().map(|m| m.unread).sum();
+        let total: u32 = inboxes().map(|m| m.total).sum();
+        let here = self.scope == Scope::Everything;
 
         div()
             .px_2()
@@ -327,21 +285,23 @@ impl Workspace {
                     "All Mail".into(),
                     unread,
                     total,
-                    self.scope == Scope::Everything,
-                    // Every folder at once: a row that spun through every sync would
+                    here,
+                    // Every inbox at once: a row that spun through every sync would
                     // be a permanent fixture rather than a signal.
                     Corner::Count,
                     theme.text_muted,
                     theme,
                     0,
-                    None,
+                    // Not in any account's tree, and nothing to fold: its
+                    // glyph starts where the accounts' triangles do.
+                    Disclosure::Omitted,
                     cx.listener(|this, _, _, cx| {
                         this.sidebar_cursor = Some(RowKey::AllMail);
                         this.select_scope(Scope::Everything, cx)
                     }),
                 )
                 .when(ring == Some(&RowKey::AllMail), |row| row.bg(theme.selected))
-                .when(ring.is_none() && self.scope == Scope::Everything, |row| {
+                .when(ring.is_none() && here, |row| {
                     row.bg(theme.selected_inactive)
                 }),
             )
@@ -505,29 +465,6 @@ impl Workspace {
                             .into_any_element()
                     }),
                 },
-            )
-            // Creating a folder belongs next to the account it goes into: the
-            // menu item has to guess which account you meant, and this does
-            // not. Faint until pointed at, because it is rare.
-            .child(
-                div()
-                    .id(SharedString::from(format!("add-folder-{}", account.id)))
-                    .flex_shrink_0()
-                    .px_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .text_color(theme.text_faint)
-                    .hover(|s| s.bg(theme.hover).text_color(theme.text))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_folder_prompt(
-                            crate::folder_ui::FolderAction::Create {
-                                account: account_id,
-                            },
-                            window,
-                            cx,
-                        );
-                    }))
-                    .child("+"),
             );
 
         let mut rows = Vec::new();
@@ -619,7 +556,10 @@ impl Workspace {
         // not every folder the account has.
         let corner = corner(
             syncing,
-            context.problem.clone().filter(|_| node.role() == MailboxRole::Inbox),
+            context
+                .problem
+                .clone()
+                .filter(|_| node.role() == MailboxRole::Inbox),
         );
 
         let mut row = folder_row(
@@ -633,7 +573,7 @@ impl Workspace {
             context.color,
             theme,
             depth,
-            disclosure,
+            disclosure.map_or(Disclosure::Space, Disclosure::Triangle),
             on_click,
         );
 
@@ -736,6 +676,7 @@ fn twisty(
 ) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
+        .group(TWISTY_GROUP)
         .flex()
         .items_center()
         .justify_center()
@@ -743,17 +684,35 @@ fn twisty(
         .flex_shrink_0()
         .rounded_sm()
         .cursor_pointer()
-        .text_size(px(12.))
-        .text_color(theme.text_faint)
-        .hover(|s| s.text_color(theme.text))
         .on_click(move |event, window, cx| {
             // Without this the row underneath also fires, and opening a
             // folder's children would move you into it.
             cx.stop_propagation();
             on_click(event, window, cx);
         })
-        .child(if collapsed { "\u{25B8}" } else { "\u{25BE}" })
+        // A drawn chevron rather than the ▸ ▾ characters, which at this size
+        // are a few pixels across and hard to tell apart. An svg is tinted
+        // by its own colour rather than its parent's, so the whole column
+        // lighting it on hover goes through the group.
+        .child(
+            gpui::svg()
+                .path(if collapsed {
+                    crate::icons::CHEVRON_RIGHT
+                } else {
+                    crate::icons::CHEVRON_DOWN
+                })
+                .size(px(TWISTY_ICON))
+                .flex_shrink_0()
+                .text_color(theme.text_muted)
+                .group_hover(TWISTY_GROUP, |s| s.text_color(theme.text)),
+        )
 }
+
+/// Names the triangle's column, so hovering anywhere in it lights the chevron.
+const TWISTY_GROUP: &str = "twisty";
+
+/// How big the chevron is drawn, inside its column.
+const TWISTY_ICON: f32 = 10.;
 
 /// The width of the disclosure column, which every row reserves whether or not
 /// it has a triangle — otherwise a folder's glyph sits in a different place
@@ -852,6 +811,17 @@ fn failing(reason: SharedString, theme: &Theme) -> impl IntoElement {
         .child(div().size(px(6.)).rounded_full().bg(theme.red))
 }
 
+/// What a folder row has in the column its triangle goes in.
+enum Disclosure {
+    /// A folder with children: the triangle that folds them away.
+    Triangle(gpui::AnyElement),
+    /// A folder without: the column kept, empty, so that a folder with
+    /// children and one without still line their names up.
+    Space,
+    /// A row outside the folder tree, with no column at all.
+    Omitted,
+}
+
 /// One selectable row. Shared by the unified view and every folder so their
 /// selected and hover states cannot drift apart.
 #[allow(clippy::too_many_arguments)]
@@ -867,9 +837,9 @@ fn folder_row(
     accent: Hsla,
     theme: &Theme,
     // `depth` is how deep in the tree the row sits, which is its indent;
-    // `disclosure` is the triangle, for a row with children to fold away.
+    // `disclosure` is what goes in the triangle's column.
     depth: usize,
-    disclosure: Option<gpui::AnyElement>,
+    disclosure: Disclosure,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
     let text_color = if selected {
@@ -895,11 +865,10 @@ fn folder_row(
         .when(selected, |s| s.bg(theme.selected))
         .when(!selected, |s| s.hover(|s| s.bg(theme.hover)))
         .on_click(on_click)
-        // The triangle's column is reserved either way, so a folder with
-        // children and one without still line their names up.
-        .child(match disclosure {
-            Some(triangle) => triangle,
-            None => div().w(px(TWISTY_WIDTH)).flex_shrink_0().into_any_element(),
+        .children(match disclosure {
+            Disclosure::Triangle(triangle) => Some(triangle),
+            Disclosure::Space => Some(div().w(px(TWISTY_WIDTH)).flex_shrink_0().into_any_element()),
+            Disclosure::Omitted => None,
         })
         .child(
             div()

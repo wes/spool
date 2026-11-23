@@ -738,7 +738,9 @@ mod tests {
         drop(store);
         let (store, clients) = create(&path, 200, |_| {}).unwrap();
 
-        let all = store.envelopes(Scope::Everything, &Query::All, 1_000).unwrap().len();
+        // Every folder's, not All Mail's: the demo files mail outside the
+        // inbox too.
+        let all: u32 = store.mailboxes().unwrap().iter().map(|m| m.total).sum();
         assert_eq!(all, 200, "a second demo starts from empty, not on top of the first");
         assert!(clients > 0, "the book has clients in it");
         assert!(dir.join("clients.db").exists(), "the book sits beside the store");

@@ -47,6 +47,9 @@ pub enum Slot {
     /// The ChatGPT sign-in the writing tools use. Not a mail account's, so
     /// it is kept out of [`Slot::ALL`] and stored under a fixed name.
     ChatGpt,
+    /// The Anthropic API key Claude is asked with. Like [`Slot::ChatGpt`],
+    /// one per install rather than one per mail account.
+    Claude,
     /// The token a client book source sends with each pull, stored under the
     /// source's own name rather than a mail account's.
     ClientSource,
@@ -63,6 +66,7 @@ impl Slot {
             Slot::Password => "spool",
             Slot::RefreshToken => "spool-refresh-token",
             Slot::ChatGpt => "spool-chatgpt",
+            Slot::Claude => "spool-claude",
             Slot::ClientSource => "spool-client-source",
         }
     }
@@ -77,7 +81,7 @@ impl Slot {
         match self {
             Slot::Password => Some("mailbox"),
             Slot::RefreshToken => Some("mailbox-refresh-token"),
-            Slot::ChatGpt | Slot::ClientSource => None,
+            Slot::ChatGpt | Slot::Claude | Slot::ClientSource => None,
         }
     }
 

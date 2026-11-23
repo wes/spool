@@ -32,9 +32,10 @@ HTML mail, flags/archive/move/delete written back to the server through a queue
 that survives being offline, command palette, settings pane with four themes,
 IMAP sync against real servers, [composing](#composing) — replies, forwards,
 attachments, signatures and drafts, as text or HTML — Gmail sign-in with
-Google or an app password for any IMAP server, `mailto:` links, optional
-ChatGPT writing tools, [Clients](#clients) — a client book and sales board
-built from your mail — and [extensions](#extensions) — WebAssembly components
+Google or an app password for any IMAP server, `mailto:` links, optional AI
+through ChatGPT or Claude (writing tools, a priority sort with quick replies,
+and reminders when nobody replies), [Clients](#clients) — a client book and
+sales board built from your mail — and [extensions](#extensions) — WebAssembly components
 that contribute commands, badges, banners and panels, and that run rules over
 mail as it lands.
 
@@ -241,7 +242,8 @@ opened with rather than against empty.
 
 ### Folders
 
-`+` on an account in the sidebar creates a folder on the server; File → Rename
+New Folder, from right-clicking an account in the sidebar or File → New Folder
+(`cmd-shift-m`), creates a folder on the server; File → Rename
 Folder and Delete Folder act on the one you are standing in. Nesting is the
 account's own delimiter, typed — `/` on Gmail, `.` on a stock Dovecot — read
 off the paths sync already brought back rather than assumed.
@@ -341,8 +343,7 @@ across every account, with the whole history of each — and, for the ones you
 sell to, notes, tags and a place on a board. It opens on whoever the message
 you were reading is about, and every message header carries a mark that does
 the same: the person, scrolled to and chosen, with a client's stage beside it.
-The person button at the end of the toolbar and the Clients row at the foot of
-the sidebar open it as it was left.
+The person button at the end of the toolbar opens it as it was left.
 
 A window rather than a tab, for the reason Settings is one: what you know
 about a client is something you check *because of* a message, and a pane over
@@ -419,9 +420,9 @@ Modal-ish and vim-flavored, in the sense that your hands stay put.
 | `backspace` | move to trash | `cmd-r` | sync |
 | `shift-c` | copy sender | `cmd-,` | settings |
 | `cmd-a` | select all | `shift-↑` `shift-↓` | extend selection |
-| `cmd-z` | undo the last move | | |
-| | | `cmd-alt-p` | formatted / plain body |
-| | | `cmd-alt-d` | slim / detail list |
+| `cmd-z` | undo the last move | `p` | priority mail only |
+| `shift-p` | mark priority, or not | `cmd-alt-p` | formatted / plain body |
+| `1` `2` `3` | quick reply | `cmd-alt-d` | slim / detail list |
 | | | `escape` | back out one layer |
 
 In the sidebar — click in it, or press `←` from the list — the keys work the

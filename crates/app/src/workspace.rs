@@ -122,6 +122,8 @@ pub enum Filter {
     All,
     Unread,
     Flagged,
+    /// What the Priority sort says needs you: see `priority`.
+    Priority,
 }
 
 impl Filter {
@@ -130,6 +132,7 @@ impl Filter {
             Filter::All => "All",
             Filter::Unread => "Unread",
             Filter::Flagged => "Flagged",
+            Filter::Priority => "Priority",
         }
     }
 
@@ -137,7 +140,8 @@ impl Filter {
         match self {
             Filter::All => Filter::Unread,
             Filter::Unread => Filter::Flagged,
-            Filter::Flagged => Filter::All,
+            Filter::Flagged => Filter::Priority,
+            Filter::Priority => Filter::All,
         }
     }
 }
@@ -564,6 +568,10 @@ pub struct Workspace {
     pub has_accounts: bool,
     /// Going into the demo or coming out of it, while that is under way.
     pub(crate) switching: Option<crate::demo::Switch>,
+    /// The Priority sort: what it has counted, and the open message's
+    /// verdict and replies.
+    pub(crate) priority: crate::priority::Priority,
+    pub(crate) follow_ups: crate::follow_up::FollowUps,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -707,10 +715,20 @@ impl Workspace {
             demo,
             has_accounts: false,
             switching: None,
+            priority: Default::default(),
+            follow_ups: Default::default(),
             extensions: crate::extensions::Host::open(extensions_root, store_for_extensions),
             extensions_task: None,
             extension_switches: HashMap::new(),
-            _subscriptions: vec![subscription],
+            _subscriptions: vec![
+                subscription,
+                // Signing in, or connecting a key, is when mail that arrived
+                // without an AI to sort it can be sorted.
+                cx.observe_global::<crate::assist::Assistant>(|this, cx| {
+                    this.sort_new_mail(cx);
+                    this.check_follow_ups(cx);
+                }),
+            ],
         };
 
         // The one store read still in front of the first frame. It has to be:
@@ -736,6 +754,7 @@ impl Workspace {
         // component is a compiler run, and nothing about it belongs in front
         // of the first list of messages.
         this.start_extensions(cx);
+        this.start_follow_ups(cx);
 
         // A mail client should be current by the time you have finished
         // looking at the window, so start a sync if an account is configured
@@ -783,6 +802,7 @@ impl Workspace {
                 Filter::All => Query::All,
                 Filter::Unread => Query::Unread,
                 Filter::Flagged => Query::Flagged,
+                Filter::Priority => Query::Priority,
             }
         }
     }
@@ -875,6 +895,7 @@ impl Workspace {
                     this.mailboxes = mailboxes;
                     crate::badge::set(&this.mailboxes);
                     this.leave_hidden_scope(cx);
+                    this.load_follow_ups(cx);
                     cx.notify();
                 }
             })
@@ -1301,6 +1322,7 @@ impl Workspace {
                 let (primary, others) = loaded;
                 this.open = Some(primary);
                 this.thread = others;
+                this.load_open_priority(cx);
 
                 // The preference can be toggled while a body is in flight, and
                 // this one was parsed against the older answer.
@@ -1356,15 +1378,7 @@ impl Workspace {
         // those two can land on a folder that is folded out of sight. The
         // sidebar has to show you where you now are.
         self.reveal_mailbox(id, cx);
-        self.scope = Scope::Mailbox(id);
-        self.label_filter = None;
-        self.label_counts.clear();
-        self.selected = 0;
-        self.chosen = None;
-        self.clear_marks();
-        self.open = None;
-        self.list_scroll.scroll_to_item(0, gpui::ScrollStrategy::Top);
-        self.reload(cx);
+        self.select_scope(Scope::Mailbox(id), cx);
     }
 
     /// Puts a dragged account where another one is.
@@ -1412,6 +1426,13 @@ impl Workspace {
     /// Switches the mail to a different scope: one folder, one account, or
     /// everything.
     pub fn select_scope(&mut self, scope: Scope, cx: &mut Context<Self>) {
+        // Another mailbox opens on all its mail. Priority is a look at the
+        // one in front of you, turned on there with `p` if it is wanted;
+        // Unread and Flagged, which are about the mail rather than about you,
+        // carry over.
+        if self.filter == Filter::Priority && self.scope != scope {
+            self.filter = Filter::All;
+        }
         self.scope = scope;
         self.label_filter = None;
         self.label_counts.clear();
@@ -1421,6 +1442,7 @@ impl Workspace {
         self.open = None;
         self.list_scroll.scroll_to_item(0, gpui::ScrollStrategy::Top);
         self.reload(cx);
+        self.load_follow_ups(cx);
     }
 
     /// Applies a flag change locally and writes it through to the store.
@@ -1927,6 +1949,7 @@ impl Workspace {
         let mut leaving: Vec<MessageId> = Vec::new();
         let mut staying: Vec<(usize, MailboxId)> = Vec::new();
         let mut last_subject = String::new();
+        let searching = self.query().is_search();
 
         for (id, target) in moves {
             let Some(index) = self.envelopes.iter().position(|e| e.id == id) else { continue };
@@ -1939,7 +1962,7 @@ impl Workspace {
             last_subject = envelope.subject.clone();
             pending.push((id, target));
 
-            if scope_holds(self.scope, &self.mailboxes, target) {
+            if scope_holds(self.scope, searching, &self.mailboxes, target) {
                 staying.push((index, target));
             } else {
                 leaving.push(id);
@@ -1971,9 +1994,10 @@ impl Workspace {
             })
             .collect();
 
-        // Filing inside the unified view moves a message between folders
-        // without taking it out of "everything", so the row stays and only its
-        // folder changes. Dropping it would be a lie the next reload corrects.
+        // Filing inside a search of All Mail moves a message between folders
+        // without taking it out of what the search covers, so the row stays
+        // and only its folder changes. Dropping it would be a lie the next
+        // reload corrects.
         for (index, target) in staying {
             self.envelopes[index].mailbox_id = target;
         }
@@ -2287,6 +2311,10 @@ impl Workspace {
 
     pub fn cycle_filter_now(&mut self, cx: &mut Context<Self>) {
         self.filter = self.filter.next();
+        // Priority is a stop only while there is a sort to show.
+        if self.filter == Filter::Priority && !self.settings.priority {
+            self.filter = self.filter.next();
+        }
         self.selected = 0;
         // A different list is a different question; the answer starts at the
         // top rather than hunting for where the last message went.
@@ -2788,6 +2816,7 @@ impl Workspace {
         &mut self,
         draft: spool_core::draft::Draft,
         draft_id: Option<i64>,
+        wait: Option<crate::follow_up::Wait>,
         cx: &mut Context<Self>,
     ) {
         if self.demo {
@@ -2819,7 +2848,10 @@ impl Workspace {
                 this.activities.end(ActivityKind::Send);
 
                 match sent {
-                    Ok(()) => {
+                    Ok(message_id) => {
+                        // Watched for an answer, and whatever it answered
+                        // or followed up on let go of.
+                        this.remember_sent(message_id, &draft, wait, cx);
                         // Only now: the message is somewhere other than here.
                         if let Some(id) = draft_id
                             && let Err(e) = store.delete_draft(id)
@@ -4583,6 +4615,10 @@ impl Workspace {
                 // extension that classifies mail should classify the mail that
                 // arrived while you were watching it arrive.
                 this.extensions_on_messages(ingested, cx);
+                // And the Priority sort, on whatever came in, and the
+                // reminders, some of which it may have answered.
+                this.sort_new_mail(cx);
+                this.check_follow_ups(cx);
 
                 // Only for mail that turned up on its own. A sync somebody
                 // asked for and watched finish does not need a banner telling
@@ -5212,9 +5248,15 @@ fn arrange_accounts<'a>(accounts: &'a [Account], order: &[String]) -> Vec<&'a Ac
     arranged
 }
 
-fn scope_holds(scope: Scope, mailboxes: &[Mailbox], mailbox: MailboxId) -> bool {
+/// Whether a message filed into `mailbox` is still one of the rows `scope`
+/// lists, as the store's list query decides it.
+fn scope_holds(scope: Scope, searching: bool, mailboxes: &[Mailbox], mailbox: MailboxId) -> bool {
     match scope {
-        Scope::Everything => true,
+        // A search of All Mail covers every folder.
+        Scope::Everything if searching => true,
+        // All Mail lists every inbox, so archiving or deleting from it takes
+        // the row out, as it does from one inbox.
+        Scope::Everything => mailboxes.iter().any(|m| m.id == mailbox && m.role == MailboxRole::Inbox),
         Scope::Mailbox(id) => id == mailbox,
         // The account row lists that account's inbox, so filing a message
         // anywhere else in the same account takes it out of the list — the
@@ -5358,6 +5400,11 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::delete_message))
             .on_action(cx.listener(Self::mark_all_read))
             .on_action(cx.listener(Self::cycle_filter))
+            .on_action(cx.listener(Self::toggle_priority_filter))
+            .on_action(cx.listener(Self::mark_priority))
+            .on_action(cx.listener(Self::quick_reply_1))
+            .on_action(cx.listener(Self::quick_reply_2))
+            .on_action(cx.listener(Self::quick_reply_3))
             .on_action(cx.listener(Self::toggle_thread_view))
             .on_action(cx.listener(Self::toggle_body_source))
             .on_action(cx.listener(Self::load_older_action))
@@ -5702,16 +5749,27 @@ mod tests {
     #[test]
     fn filing_inside_a_folder_view_takes_the_message_out_of_it() {
         let boxes = [mailbox(1, 1), mailbox(2, 1)];
-        assert!(!scope_holds(Scope::Mailbox(MailboxId(1)), &boxes, MailboxId(2)));
-        assert!(scope_holds(Scope::Mailbox(MailboxId(1)), &boxes, MailboxId(1)));
+        assert!(!scope_holds(Scope::Mailbox(MailboxId(1)), false, &boxes, MailboxId(2)));
+        assert!(scope_holds(Scope::Mailbox(MailboxId(1)), false, &boxes, MailboxId(1)));
     }
 
     #[test]
-    fn filing_inside_the_unified_view_keeps_the_row() {
-        // Archiving from All Mail moves a message between folders; it is still
-        // one of "everything", so the row stays and only its folder changes.
-        let boxes = [mailbox(1, 1)];
-        assert!(scope_holds(Scope::Everything, &boxes, MailboxId(9)));
+    fn all_mail_holds_every_inbox_and_nothing_else() {
+        let boxes = [mailbox(1, 1), mailbox(2, 2), folder(3, 1, "Archive"), folder(4, 2, "Trash")];
+        // Moving mail back into any account's inbox keeps it in All Mail.
+        assert!(scope_holds(Scope::Everything, false, &boxes, MailboxId(1)));
+        assert!(scope_holds(Scope::Everything, false, &boxes, MailboxId(2)));
+        // Archiving or deleting from All Mail takes the row out.
+        assert!(!scope_holds(Scope::Everything, false, &boxes, MailboxId(3)));
+        assert!(!scope_holds(Scope::Everything, false, &boxes, MailboxId(4)));
+    }
+
+    #[test]
+    fn filing_inside_a_search_of_all_mail_keeps_the_row() {
+        // The search covers every folder, so the message is still one of its
+        // answers; only its folder changes.
+        let boxes = [mailbox(1, 1), folder(3, 1, "Archive")];
+        assert!(scope_holds(Scope::Everything, true, &boxes, MailboxId(3)));
     }
 
     fn syncing(pairs: &[(&str, &str)]) -> std::collections::HashSet<(String, String)> {
@@ -5804,15 +5862,15 @@ mod tests {
     #[test]
     fn an_account_view_holds_its_own_inbox_and_nothing_else() {
         let boxes = [mailbox(1, 1), mailbox(2, 2), folder(3, 1, "Archive")];
-        assert!(scope_holds(Scope::Account(AccountId(1)), &boxes, MailboxId(1)));
+        assert!(scope_holds(Scope::Account(AccountId(1)), false, &boxes, MailboxId(1)));
         // Another account's inbox.
-        assert!(!scope_holds(Scope::Account(AccountId(1)), &boxes, MailboxId(2)));
+        assert!(!scope_holds(Scope::Account(AccountId(1)), false, &boxes, MailboxId(2)));
         // This account, but archiving from the account row takes the row out
         // of the list rather than leaving it there pointing at a folder the
         // list is not showing.
-        assert!(!scope_holds(Scope::Account(AccountId(1)), &boxes, MailboxId(3)));
+        assert!(!scope_holds(Scope::Account(AccountId(1)), false, &boxes, MailboxId(3)));
         // A folder the sidebar has not heard of is not in any account's view.
-        assert!(!scope_holds(Scope::Account(AccountId(1)), &boxes, MailboxId(99)));
+        assert!(!scope_holds(Scope::Account(AccountId(1)), false, &boxes, MailboxId(99)));
     }
 
 

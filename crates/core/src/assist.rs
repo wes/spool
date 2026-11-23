@@ -411,7 +411,9 @@ impl Write {
 }
 
 impl Answering {
-    fn shown(&self) -> String {
+    /// The message as a model is shown it: who, what, and its text, cut to
+    /// a length that leaves the newest part of a long thread in.
+    pub fn shown(&self) -> String {
         let text: String = self.text.trim().chars().take(ANSWERING_CHARS).collect();
         format!("From: {}\nSubject: {}\n---\n{text}\n---\n", self.from.trim(), self.subject.trim())
     }

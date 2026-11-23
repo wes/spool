@@ -66,6 +66,24 @@ pub struct Settings {
     /// to the account's default, which is what changes when OpenAI retires a
     /// model; a picked one that is retired falls back to the same.
     pub writing_model: Option<String>,
+    /// Which AI the AI features ask: the writing tools, the Priority sort and
+    /// quick replies. ChatGPT unless changed, since that was the only one
+    /// there was.
+    pub ai_provider: spool_net::ai::Provider,
+    /// The Claude model, by its id. `None` is `claude::DEFAULT_MODEL`.
+    pub claude_model: Option<String>,
+    /// Whether new inbox mail is sorted by whether it needs you, which sends
+    /// it to the AI provider. Off until turned on in Settings → AI: it is the
+    /// one AI feature that reads mail nobody asked it to.
+    pub priority: bool,
+    /// Whether mail sorted as wanting a reply gets replies written for it in
+    /// the background, ready to send. Only while `priority` is on.
+    pub quick_replies: bool,
+    /// Whether mail you send is watched for an answer, and brought back with
+    /// a follow-up ready when none comes. Off until turned on in Settings →
+    /// AI, since deciding which sent mail expected an answer sends it to the
+    /// AI provider.
+    pub follow_ups: bool,
     /// The mailboxes each extension with a switch has been switched on for.
     pub scanning: Vec<Scanning>,
     /// Whether Clients — the client book and the board — has been added, in
@@ -121,6 +139,11 @@ impl Default for Settings {
             image_domains: Vec::new(),
             compose_text_size: Self::COMPOSE_TEXT,
             writing_model: None,
+            ai_provider: spool_net::ai::Provider::default(),
+            claude_model: None,
+            priority: false,
+            quick_replies: true,
+            follow_ups: false,
             scanning: Vec::new(),
             clients: false,
             default_mail_declined: false,
@@ -1118,6 +1141,18 @@ mod tests {
 
         // A plain value declared after tables, which the writer must reorder.
         let settings = Settings { writing_model: Some("gpt-9".into()), ..Default::default() };
+        settings.save_to(&path).unwrap();
+        assert_eq!(Settings::load_from(&path).unwrap(), settings);
+
+        // The AI choices, which a file from before they existed has none of.
+        let settings = Settings {
+            ai_provider: spool_net::ai::Provider::Claude,
+            claude_model: Some("claude-haiku-5-5".into()),
+            priority: true,
+            quick_replies: false,
+            follow_ups: true,
+            ..Default::default()
+        };
         settings.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path).unwrap(), settings);
 

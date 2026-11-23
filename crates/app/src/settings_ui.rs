@@ -30,20 +30,21 @@ pub enum Section {
     #[default]
     Accounts,
     Appearance,
-    /// The composer's writing tools, and the model behind them.
-    Writing,
+    /// The AI provider, and what uses it: the composer's writing tools, the
+    /// Priority sort and quick replies.
+    Ai,
     Extensions,
 }
 
 impl Section {
     pub const ALL: [Section; 4] =
-        [Section::Accounts, Section::Appearance, Section::Writing, Section::Extensions];
+        [Section::Accounts, Section::Appearance, Section::Ai, Section::Extensions];
 
     pub fn name(self) -> &'static str {
         match self {
             Section::Accounts => "Accounts",
             Section::Appearance => "Appearance",
-            Section::Writing => "Writing",
+            Section::Ai => "AI",
             Section::Extensions => "Extensions",
         }
     }
@@ -52,7 +53,7 @@ impl Section {
         match self {
             Section::Accounts => "\u{2709}",
             Section::Appearance => "\u{25D0}",
-            Section::Writing => "\u{2726}",
+            Section::Ai => "\u{2726}",
             Section::Extensions => "\u{2699}",
         }
     }
@@ -63,6 +64,9 @@ pub struct SettingsState {
     pub section: Section,
     pub accounts: AccountsState,
     pub extensions: ExtensionSettings,
+    /// Where an Anthropic API key is pasted, made when the AI section is
+    /// first shown.
+    pub claude_key: Option<Entity<TextInput>>,
 }
 
 /// One text field per declared setting, per extension.
@@ -136,8 +140,8 @@ impl Workspace {
                         if item == Section::Extensions {
                             this.load_extension_settings(cx);
                         }
-                        if item == Section::Writing {
-                            crate::assist::load_models(false, cx);
+                        if item == Section::Ai {
+                            this.prepare_ai_settings(cx);
                         }
                         cx.notify();
                     }))
@@ -160,7 +164,7 @@ impl Workspace {
         let body = match section {
             Section::Accounts => self.render_accounts(theme, window, cx),
             Section::Appearance => self.render_appearance(theme, cx),
-            Section::Writing => self.render_writing(theme, cx),
+            Section::Ai => self.render_ai(theme, window, cx),
             Section::Extensions => self.render_extensions(theme, window, cx),
         };
 
@@ -959,8 +963,8 @@ impl Workspace {
                             .text_size(theme.small_text_size)
                             .text_color(theme.text_faint)
                             .child(
-                                "\u{201c}All Mail\u{201d} stacks every account into one \
-                                 list. Useful for triage, and off unless you want it.",
+                                "\u{201c}All Mail\u{201d} stacks every account\u{2019}s inbox \
+                                 into one list. Useful for triage, and off unless you want it.",
                             ),
                     ),
             )

@@ -20,6 +20,10 @@ pub const PAPERCLIP: &str = "paperclip";
 /// Somebody, as Clients knows them: the way into Clients from a message.
 pub const PERSON: &str = "person";
 
+/// The sidebar's disclosure triangle, folded and open.
+pub const CHEVRON_RIGHT: &str = "chevron-right";
+pub const CHEVRON_DOWN: &str = "chevron-down";
+
 /// The app's own icon, for the About window: a PNG drawn by
 /// `scripts/make_icon.py`, the same script the bundle's icon comes from, so
 /// the two cannot drift apart. Regenerate it with:
@@ -33,6 +37,8 @@ const APP_ICON_PNG: &[u8] = include_bytes!("../icons/spool.png");
 const FILES: &[(&str, &[u8])] = &[
     (PAPERCLIP, include_bytes!("../icons/paperclip.svg")),
     (PERSON, include_bytes!("../icons/person.svg")),
+    (CHEVRON_RIGHT, include_bytes!("../icons/chevron-right.svg")),
+    (CHEVRON_DOWN, include_bytes!("../icons/chevron-down.svg")),
 ];
 
 pub struct Icons;

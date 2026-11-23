@@ -22,8 +22,8 @@ use std::{
 };
 
 use gpui::{
-    AnyElement, App, Bounds, Context, Entity, ExternalPaths, FocusHandle, Focusable, SharedString,
-    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
+    AnyElement, App, Bounds, Context, Entity, ExternalPaths, FocusHandle, Focusable, ScrollHandle,
+    SharedString, Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
     WindowOptions, div, point, prelude::*, px, size,
 };
 use spool_core::{
@@ -89,6 +89,16 @@ pub struct Composer {
     bcc: Entity<RecipientField>,
     subject: Entity<TextInput>,
     body: Entity<TextArea>,
+    /// The box the body scrolls in, which the body keeps its caret inside.
+    body_scroll: ScrollHandle,
+    /// How long this waits for an answer once sent, in days, or `None` for
+    /// not at all. Only while follow-up reminders are on.
+    remind: Option<u32>,
+    /// Whether `remind` was changed by hand from the default.
+    remind_chosen: bool,
+    /// Whether follow-up reminders were on when this opened, which is
+    /// whether it offers one.
+    reminders: bool,
 
     /// Who this is from — fixed at open time from the account, so a draft can
     /// never name a sender the account is not entitled to use.
@@ -286,6 +296,7 @@ impl Composer {
         workspace: WeakEntity<Workspace>,
         group: Option<Group>,
         text_size: f32,
+        reminders: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -309,8 +320,10 @@ impl Composer {
             input.set_content(draft.subject.clone(), cx);
             input
         });
+        let body_scroll = ScrollHandle::new();
         let body = cx.new(|cx| {
             let mut area = TextArea::new("Write your message\u{2026}", cx);
+            area.follow_with(body_scroll.clone());
             area.set_style(body_style(text_size, cx), cx);
             area.set_text(draft.body.clone(), cx);
             // A reply's body opens with two blank lines above the quote; the
@@ -376,6 +389,10 @@ impl Composer {
             bcc,
             subject,
             body,
+            body_scroll,
+            remind: reminders.then_some(spool_core::follow_up::DEFAULT_WAIT),
+            remind_chosen: false,
+            reminders,
             from: draft.from.clone(),
             in_reply_to: draft.in_reply_to.clone(),
             references: draft.references.clone(),
@@ -454,6 +471,36 @@ impl Composer {
     /// Said in words rather than with an icon, because the difference is not
     /// visible in the editor — both are typed the same way — and the words
     /// are what the recipient's client will be handed.
+    /// How long the message waits for an answer once sent, by Send. Clicking
+    /// steps through the waits and off. Not for a group send, which is many
+    /// messages rather than one waiting on a person.
+    fn render_remind(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.reminders || self.group.is_some() {
+            return None;
+        }
+        let label = match self.remind {
+            None => "No reminder".to_string(),
+            Some(1) => "Remind in 1 day".to_string(),
+            Some(7) => "Remind in 1 week".to_string(),
+            Some(days) => format!("Remind in {days} days"),
+        };
+        Some(
+            div()
+                .id("compose-remind")
+                .cursor_pointer()
+                .text_size(theme.small_text_size)
+                .text_color(theme.text_faint)
+                .hover(|s| s.text_color(theme.text))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.remind = next_wait(this.remind);
+                    this.remind_chosen = true;
+                    cx.notify();
+                }))
+                .child(format!("\u{21a9} {label}"))
+                .into_any_element(),
+        )
+    }
+
     fn render_format_toggle(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let option = |format: Format, label: &'static str| {
             let chosen = self.format == format;
@@ -553,7 +600,10 @@ impl Composer {
                         this.assist_note = Some((
                             match tool {
                                 assist::Tool::Proofread => "No mistakes found.".into(),
-                                _ => "ChatGPT didn\u{2019}t suggest any changes to this.".into(),
+                                _ => format!(
+                                    "{} didn\u{2019}t suggest any changes to this.",
+                                    spool_net::ai::provider().name()
+                                ),
                             },
                             false,
                         ));
@@ -982,8 +1032,9 @@ impl Composer {
 
         let draft_id = self.draft_id;
         self.save_task = None;
+        let wait = self.remind.map(|days| crate::follow_up::Wait { days, asked: self.remind_chosen });
         self.workspace
-            .update(cx, |workspace, cx| workspace.send_draft(draft, draft_id, cx))
+            .update(cx, |workspace, cx| workspace.send_draft(draft, draft_id, wait, cx))
             .ok();
 
         self.take_off(window, cx);
@@ -1317,7 +1368,10 @@ impl Composer {
                         this.assist_note = Some((
                             match tool {
                                 assist::Tool::Proofread => "No mistakes found.".into(),
-                                _ => "ChatGPT didn\u{2019}t suggest any changes to this.".into(),
+                                _ => format!(
+                                    "{} didn\u{2019}t suggest any changes to this.",
+                                    spool_net::ai::provider().name()
+                                ),
                             },
                             false,
                         ));
@@ -1552,10 +1606,11 @@ impl Composer {
         // Nothing until the keychain has answered: a notice flashing up for a
         // moment on every composer that can in fact use the tools is noise.
         let assistant = cx.global::<crate::assist::Assistant>();
-        if assistant.connection == crate::assist::Connection::Checking {
+        if assistant.is_checking() {
             return None;
         }
         let ready = assistant.is_ready();
+        let connect = format!("{} to use the writing tools", assistant.what_to_connect());
 
         let link = |id: &'static str, label: SharedString| {
             div()
@@ -1580,7 +1635,7 @@ impl Composer {
         if !ready {
             return Some(
                 row.child(
-                    link("assist-unavailable", "Sign in with ChatGPT to use the writing tools".into())
+                    link("assist-unavailable", connect.into())
                         .on_click(cx.listener(|this, _, _, cx| this.open_writing_settings(cx))),
                 )
                 .into_any_element(),
@@ -2375,14 +2430,16 @@ impl Render for Composer {
             .children(self.render_tools(&theme, cx))
             .children(html_body)
             .when(!editing_html, |this| this.child(
+                // A block, not a flex row: a flex row stretches the area to
+                // exactly its own height, and then there is nothing to scroll.
                 div()
                     .id("compose-body")
-                    .flex()
                     .flex_1()
                     .min_h_0()
                     .px_4()
                     .py_3()
                     .overflow_y_scroll()
+                    .track_scroll(&self.body_scroll)
                     .bg(PAGE)
                     .text_color(INK)
                     // The face and size are set on the area itself, not here:
@@ -2471,6 +2528,7 @@ impl Render for Composer {
                             .flex()
                             .items_center()
                             .gap_3()
+                            .children(self.render_remind(&theme, cx))
                             .child(
                                 div()
                                     .text_size(theme.small_text_size)
@@ -2564,6 +2622,29 @@ impl Workspace {
         self.reply_to_message(envelope, body, html, kind, cx);
     }
 
+    /// Opens a reply to the open message with `text` already written in it —
+    /// a quick reply, ready to change and send. Never sends it.
+    pub(crate) fn reply_with_text(&mut self, text: String, cx: &mut Context<Self>) {
+        let Some(open) = self.open.as_ref() else { return };
+        let envelope = open.envelope.clone();
+        let body = open.body.clone();
+        let html = self.quotable_html(&body);
+        self.reply_written(envelope, body, html, ReplyKind::Sender, Some(text), cx);
+    }
+
+    /// Opens a follow-up to a message you sent: a reply to everyone it went
+    /// to, with `nudge` written in when there is one. Never sends it.
+    pub(crate) fn follow_up_on(
+        &mut self,
+        envelope: spool_core::Envelope,
+        body: spool_core::Body,
+        nudge: String,
+        cx: &mut Context<Self>,
+    ) {
+        let html = self.quotable_html(&body);
+        self.reply_written(envelope, body, html, ReplyKind::All, Some(nudge), cx);
+    }
+
     /// Opens a reply to a message that need not be the one selected — the
     /// client book's history answers from here.
     ///
@@ -2575,6 +2656,20 @@ impl Workspace {
         body: spool_core::Body,
         html: Option<String>,
         kind: ReplyKind,
+        cx: &mut Context<Self>,
+    ) {
+        self.reply_written(envelope, body, html, kind, None, cx);
+    }
+
+    /// As [`Self::reply_to_message`], with what to say already in place
+    /// above the quote and the signature.
+    fn reply_written(
+        &mut self,
+        envelope: spool_core::Envelope,
+        body: spool_core::Body,
+        html: Option<String>,
+        kind: ReplyKind,
+        written: Option<String>,
         cx: &mut Context<Self>,
     ) {
         let Some(from) = self.reply_identity(&envelope, &body) else {
@@ -2602,6 +2697,9 @@ impl Workspace {
 
         let mut draft = draft::reply(original, &from, kind, &quoted);
         draft.body = draft::sign(&draft.body, &self.signature_for(&draft.from));
+        if let Some(written) = written.filter(|w| !w.trim().is_empty()) {
+            draft.body = assist::place_written(&draft.body, written.trim()).0;
+        }
         // A message that came as HTML goes back as HTML, with the original
         // under the reply as it was sent rather than flattened into text.
         if let Some(html) = html {
@@ -2826,6 +2924,9 @@ impl Workspace {
         // Read here, where the workspace is in hand, rather than by the
         // composer while it draws.
         let text_size = self.settings.compose_text();
+        // Read here, not by the composer: it draws its first frame while the
+        // mailbox is still in the middle of opening it, and cannot read it.
+        let reminders = self.settings.follow_ups;
 
         // Cascaded rather than stacked: a second composer landing exactly on
         // the first is a window you cannot see is there.
@@ -2853,7 +2954,8 @@ impl Workspace {
         let opened = cx.open_window(options, |window, cx| {
             cx.new(|cx| {
                 Composer::new(
-                    &draft, focus, draft_id, identities, store, workspace, group, text_size, window, cx,
+                    &draft, focus, draft_id, identities, store, workspace, group, text_size, reminders, window,
+                    cx,
                 )
             })
         });
@@ -3039,7 +3141,18 @@ pub(crate) fn body_text(body: &spool_core::Body) -> String {
 ///
 /// Free rather than a method because it runs on a background thread and must
 /// not touch the composer.
-pub(crate) async fn deliver(store: Store, draft: Draft) -> anyhow::Result<()> {
+/// The wait after `wait`, as the composer's reminder steps through them:
+/// each of `follow_up::WAITS` in turn, then none, then round again.
+fn next_wait(wait: Option<u32>) -> Option<u32> {
+    use spool_core::follow_up::WAITS;
+    match wait {
+        None => WAITS.first().copied(),
+        Some(days) => WAITS.iter().copied().find(|&w| w > days),
+    }
+}
+
+/// Returns the sent message's Message-ID, which a reply to it will quote.
+pub(crate) async fn deliver(store: Store, draft: Draft) -> anyhow::Result<String> {
     use anyhow::Context as _;
 
     let config = spool_net::Config::load(spool_net::Config::default_path())?;
@@ -3091,7 +3204,7 @@ pub(crate) async fn deliver(store: Store, draft: Draft) -> anyhow::Result<()> {
         log::warn!("the message was sent, but no copy could be filed: {e:#}");
     }
 
-    Ok(())
+    Ok(message_id)
 }
 
 /// Puts a copy of what was just sent into the account's Sent folder.
@@ -3177,6 +3290,15 @@ mod tests {
     /// window. The dark theme's own caret is white and its own selection fill
     /// is dark, and both were invisible here: a white caret on white paper,
     /// and near-black ink on a near-black fill.
+    #[test]
+    fn the_reminder_steps_through_its_waits_then_off_then_round() {
+        use super::next_wait;
+        assert_eq!(next_wait(Some(3)), Some(7));
+        assert_eq!(next_wait(Some(7)), None);
+        assert_eq!(next_wait(None), Some(1));
+        assert_eq!(next_wait(Some(1)), Some(3));
+    }
+
     #[test]
     fn the_page_can_be_written_and_read_on_in_every_theme() {
         use super::{INK, PAGE};

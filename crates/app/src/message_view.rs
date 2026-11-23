@@ -122,6 +122,7 @@ impl Workspace {
                     cx,
                 )
             }))
+            .children(self.render_priority_bar(envelope.id, theme, cx))
             .children(self.render_extension_banners(envelope.id, theme))
             .children(self.render_unsubscribe_bar(envelope.id, theme, cx))
             .children(self.render_source_chip(open, theme, cx))
@@ -435,6 +436,7 @@ impl Workspace {
                     cx,
                 )
             }))
+            .children(self.render_priority_bar(envelope.id, theme, cx))
             .children(self.render_extension_banners(envelope.id, theme))
             .children(self.render_unsubscribe_bar(envelope.id, theme, cx))
             .children(self.render_source_chip(message, theme, cx))

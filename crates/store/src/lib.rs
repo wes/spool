@@ -12,10 +12,12 @@
 
 pub mod book;
 pub mod demo;
+pub mod follow_up;
 pub mod outbox;
 pub mod people;
 pub mod search;
 pub mod suggest;
+pub mod triage;
 
 use search::Search;
 
@@ -89,6 +91,8 @@ pub enum Query {
     All,
     Unread,
     Flagged,
+    /// What the Priority sort says needs you: see `triage`.
+    Priority,
     /// Full-text search. Empty behaves as [`Query::All`].
     Text(String),
 }
@@ -104,7 +108,9 @@ impl Query {
 pub enum Scope {
     Mailbox(MailboxId),
     Account(AccountId),
-    /// Every message in every account — the unified view.
+    /// The unified view, "All Mail" in the sidebar: every account's inbox in
+    /// one list, the same front door [`Scope::Account`] is for one account.
+    /// A search from it looks through every folder of every account.
     Everything,
 }
 
@@ -1154,7 +1160,13 @@ impl Store {
                 "m.mailbox_id IN (SELECT id FROM mailboxes WHERE account_id = ?2 AND role = 'inbox')",
                 id.0,
             ),
-            Scope::Everything => ("?2 = ?2", "?2 = ?2", 0),
+            // Every inbox, the rows All Mail lists. `?2` is still bound, so
+            // it is still named.
+            Scope::Everything => (
+                "mailbox_id IN (SELECT id FROM mailboxes WHERE role = 'inbox') AND ?2 = ?2",
+                "m.mailbox_id IN (SELECT id FROM mailboxes WHERE role = 'inbox') AND ?2 = ?2",
+                0,
+            ),
         };
         let tx = this.conn.transaction()?;
 
@@ -1826,7 +1838,36 @@ fn with_envelopes<R>(
                 }
             }
         }
-        Scope::Everything => "1 = 1".to_string(),
+        // A search from All Mail is a search of all mail. Searching only
+        // what is still waiting would hide the message you archived last
+        // week, which is usually the one you are looking for.
+        Scope::Everything if query.is_search() => "1 = 1".to_string(),
+        // Every account's inbox, for the same reasons as one account's.
+        // Listing every folder kept whatever you archived or deleted from
+        // All Mail on screen: the row had only moved to another folder that
+        // the list also held. And a conversation took in its replies from
+        // Sent, so archiving it filed your own sent mail away with it.
+        Scope::Everything => {
+            let inboxes = every_inbox_id(conn)?;
+            match inboxes.len() {
+                0 => "1 = 0".to_string(),
+                // One account: its inbox, walked in date order off the index.
+                1 => {
+                    values.extend(inboxes.into_iter().map(Value::from));
+                    "m.mailbox_id = ?".to_string()
+                }
+                // Several: no single index walk gives them in date order, and
+                // fetching each inbox through the index and then sorting is the
+                // slow way round — 90ms for the first page of a 150,000-message
+                // bench against 30ms for scanning the table, which is what
+                // listing every folder did. The `+` keeps SQLite on the scan.
+                _ => {
+                    let places = vec!["?"; inboxes.len()].join(", ");
+                    values.extend(inboxes.into_iter().map(Value::from));
+                    format!("+m.mailbox_id IN ({places})")
+                }
+            }
+        }
     };
 
     let mut filter_sql = String::new();
@@ -1834,6 +1875,7 @@ fn with_envelopes<R>(
         Query::All => {}
         Query::Unread => filter_sql = format!(" AND m.flags & {} = 0", Flags::SEEN),
         Query::Flagged => filter_sql = format!(" AND m.flags & {} != 0", Flags::FLAGGED),
+        Query::Priority => filter_sql = format!(" AND {}", triage::in_priority_sql()),
         Query::Text(text) => {
             let search = Search::parse(text, now_seconds());
             filter_sql = search.clauses(&mut values);
@@ -1859,9 +1901,18 @@ fn with_envelopes<R>(
 
     values.push((limit as i64).into());
 
+    // In Priority, what the message needs from you says more than its first
+    // line does, so the row shows that where the first line would go.
+    let snippet_sql = match query {
+        Query::Priority => {
+            "COALESCE(NULLIF((SELECT reason FROM triage WHERE message_id = m.id), ''), m.snippet)"
+        }
+        _ => "m.snippet",
+    };
+
     let sql = format!(
         "SELECT m.id, m.account_id, m.mailbox_id, m.thread_id, m.from_name, m.from_addr,
-                m.subject, m.date_ts, m.snippet, m.flags, m.has_attachments, m.size
+                m.subject, m.date_ts, {snippet_sql}, m.flags, m.has_attachments, m.size
          FROM messages m
          WHERE {scope_sql}{filter_sql}
          ORDER BY m.date_ts DESC
@@ -1894,6 +1945,13 @@ fn inbox_ids(conn: &Connection, account: AccountId) -> Result<Vec<i64>> {
     let ids = stmt
         .query_map(params![account.0], |r| r.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+/// The inbox folders of every account: what All Mail lists.
+fn every_inbox_id(conn: &Connection) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare_cached("SELECT id FROM mailboxes WHERE role = 'inbox'")?;
+    let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<Result<Vec<_>, _>>()?;
     Ok(ids)
 }
 
@@ -2026,7 +2084,7 @@ fn decode_attachments(encoded: &str) -> Vec<Attachment> {
 ///
 /// Every `if version < n` block below has to leave the database at this
 /// number; they are applied in order for exactly that reason.
-pub const SCHEMA_VERSION: u32 = 18;
+pub const SCHEMA_VERSION: u32 = 20;
 
 impl Inner {
     fn migrate(&mut self) -> Result<()> {
@@ -2450,6 +2508,58 @@ impl Inner {
                      VALUES ('people.backfill_below', (SELECT COALESCE(MAX(id), 0) + 1 FROM messages));
 
                  PRAGMA user_version = 18;",
+            )?;
+        }
+
+        if version < 19 {
+            // The Priority sort's verdicts, and the replies kept ready for the
+            // mail that wants one. See `triage`. Both empty: mail is sorted
+            // as it arrives, once the sort is turned on, and never by a
+            // migration.
+            self.conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS triage (
+                     message_id INTEGER PRIMARY KEY
+                                REFERENCES messages(id) ON DELETE CASCADE,
+                     kind       INTEGER NOT NULL,
+                     reason     TEXT NOT NULL DEFAULT '',
+                     sorted_by  INTEGER NOT NULL,
+                     decided_at INTEGER NOT NULL
+                 );
+
+                 CREATE INDEX IF NOT EXISTS idx_triage_kind ON triage(kind, message_id);
+
+                 CREATE TABLE IF NOT EXISTS quick_replies (
+                     message_id INTEGER PRIMARY KEY
+                                REFERENCES messages(id) ON DELETE CASCADE,
+                     replies    TEXT NOT NULL,
+                     made_at    INTEGER NOT NULL
+                 );
+
+                 PRAGMA user_version = 19;",
+            )?;
+        }
+
+        if version < 20 {
+            // Mail you sent that is waiting for an answer. See `follow_up`.
+            // Empty: messages are watched from when they are sent, once the
+            // reminders are turned on, and never by a migration.
+            self.conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS follow_ups (
+                     message_id TEXT PRIMARY KEY,
+                     account_id INTEGER NOT NULL
+                                REFERENCES accounts(id) ON DELETE CASCADE,
+                     subject    TEXT NOT NULL DEFAULT '',
+                     sent_to    TEXT NOT NULL DEFAULT '',
+                     sent_at    INTEGER NOT NULL,
+                     due_at     INTEGER NOT NULL,
+                     asked      INTEGER NOT NULL DEFAULT 0,
+                     state      INTEGER NOT NULL DEFAULT 0,
+                     nudge      TEXT NOT NULL DEFAULT ''
+                 );
+
+                 CREATE INDEX IF NOT EXISTS idx_follow_ups_due ON follow_ups(state, due_at);
+
+                 PRAGMA user_version = 20;",
             )?;
         }
 
@@ -2999,7 +3109,39 @@ mod tests {
         // Another account's folders are not in this account's listing, and
         // must not be read as missing.
         assert_eq!(store.mailboxes().unwrap().len(), 2);
-        assert_eq!(store.envelopes(Scope::Everything, &Query::All, 100).unwrap().len(), 2);
+        for folder in [inbox, other_folder] {
+            assert_eq!(store.envelopes(Scope::Mailbox(folder), &Query::All, 100).unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn all_mail_lists_every_inbox_and_searches_every_folder() {
+        let (store, inbox, account) = store_with_mailbox();
+        let archive = store.upsert_mailbox(account, "Archive", MailboxRole::Archive).unwrap();
+        let other = store.add_account("Other", "other@example.com", 1).unwrap();
+        let other_inbox = store.upsert_mailbox(other, "INBOX", MailboxRole::Inbox).unwrap();
+        store.ingest(&[message(inbox, account, 1, "Waiting quince")]).unwrap();
+        store.ingest(&[message(archive, account, 2, "Filed quince")]).unwrap();
+        store.ingest(&[message(other_inbox, other, 3, "Also waiting")]).unwrap();
+
+        let mut listed: Vec<String> = store
+            .envelopes(Scope::Everything, &Query::All, 100)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.subject)
+            .collect();
+        listed.sort();
+        assert_eq!(listed, ["Also waiting", "Waiting quince"]);
+
+        // A search from All Mail finds what was filed away as well.
+        let found =
+            store.envelopes(Scope::Everything, &Query::Text("quince".into()), 100).unwrap();
+        assert_eq!(found.len(), 2);
+
+        // Marking All Mail read reaches only what it lists.
+        assert_eq!(store.mark_all_read(Scope::Everything).unwrap(), 2);
+        let filed = store.envelopes(Scope::Mailbox(archive), &Query::All, 10).unwrap();
+        assert!(!filed[0].flags.is_seen(), "the archived message was never on screen");
     }
 
     #[test]

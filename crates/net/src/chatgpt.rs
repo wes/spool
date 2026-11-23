@@ -106,22 +106,7 @@ impl Stored {
     }
 }
 
-/// A model the account offers, for Settings to list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Model {
-    pub slug: String,
-    /// What OpenAI calls it, e.g. "GPT-5.5".
-    pub name: String,
-    pub description: Option<String>,
-}
-
-/// The models the account offers, in the order OpenAI recommends them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Offered {
-    pub models: Vec<Model>,
-    /// The one used when none is picked.
-    pub default: Option<String>,
-}
+pub use crate::ai::{Model, Offered};
 
 /// An access token and what it is for.
 #[derive(Clone)]

@@ -4,7 +4,9 @@
 //! that can hang — DNS, TLS, a server that stops responding mid-FETCH — are
 //! confined to one crate with one entry point.
 
+pub mod ai;
 pub mod chatgpt;
+pub mod claude;
 pub mod compose;
 pub mod config;
 pub mod encoding;

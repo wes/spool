@@ -110,8 +110,8 @@ pub fn open_at(workspace: Entity<Workspace>, section: crate::settings_ui::Sectio
         }
         cx.notify();
     });
-    if section == crate::settings_ui::Section::Writing {
-        crate::assist::load_models(false, cx);
+    if section == crate::settings_ui::Section::Ai {
+        workspace.update(cx, |workspace, cx| workspace.prepare_ai_settings(cx));
     }
 }
 

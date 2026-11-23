@@ -80,6 +80,15 @@ actions!(
         PrevMailbox,
         /// Cycles the list between all / unread / flagged.
         CycleFilter,
+        /// Narrows the list to priority mail, or widens it back.
+        TogglePriorityFilter,
+        /// Moves the selected message into Priority, or out of it, and
+        /// teaches the sort to do the same with that sender's mail.
+        MarkPriority,
+        /// Opens the open message's first quick reply as a reply.
+        QuickReply1,
+        QuickReply2,
+        QuickReply3,
         /// Switches the reader between one message and the whole conversation.
         ToggleThreadView,
         /// Switches the reader between the formatted body and the plain-text
@@ -262,6 +271,11 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("backspace", DeleteMessage, Some("MessageList")),
         KeyBinding::new("t", ToggleThreadView, Some("MessageList")),
         KeyBinding::new("tab", CycleFilter, Some("MessageList")),
+        KeyBinding::new("p", TogglePriorityFilter, Some("MessageList")),
+        KeyBinding::new("shift-p", MarkPriority, Some("MessageList")),
+        KeyBinding::new("1", QuickReply1, Some("MessageList")),
+        KeyBinding::new("2", QuickReply2, Some("MessageList")),
+        KeyBinding::new("3", QuickReply3, Some("MessageList")),
         KeyBinding::new("/", FocusSearch, Some("MessageList")),
         KeyBinding::new("shift-c", CopySender, Some("MessageList")),
         KeyBinding::new("r", Reply, Some("MessageList")),
@@ -364,13 +378,13 @@ pub fn claimed_keystrokes() -> std::collections::BTreeSet<&'static str> {
 }
 
 const CLAIMED: &[&str] = &[
-    "/", "[", "]", "a", "backspace", "cmd-1", "cmd-2", "cmd-shift-c", "cmd-shift-i", "cmd-+", "cmd-,", "cmd--", "cmd-0", "cmd-=", "cmd-a", "cmd-alt-b",
+    "/", "1", "2", "3", "[", "]", "a", "backspace", "cmd-1", "cmd-2", "cmd-shift-c", "cmd-shift-i", "cmd-+", "cmd-,", "cmd--", "cmd-0", "cmd-=", "cmd-a", "cmd-alt-b",
     "cmd-alt-d", "cmd-alt-p", "cmd-alt-shift-n", "cmd-alt-t", "cmd-b", "cmd-enter", "cmd-f",
     "cmd-k", "cmd-n", "cmd-q", "cmd-r", "cmd-shift-a", "cmd-shift-backspace", "cmd-shift-d",
     "cmd-shift-f", "cmd-shift-m", "cmd-shift-n", "cmd-shift-p", "cmd-shift-r", "cmd-shift-s",
     "cmd-y", "cmd-z", "ctrl-d", "ctrl-n", "ctrl-p", "ctrl-q", "ctrl-u", "down", "e", "end",
-    "enter", "escape", "f", "g g", "home", "j", "k", "left", "pagedown", "pageup", "r", "right", "shift-c",
-    "shift-down", "shift-g", "shift-i", "shift-j", "shift-k", "shift-tab", "shift-u",
+    "enter", "escape", "f", "g g", "home", "j", "k", "left", "p", "pagedown", "pageup", "r", "right", "shift-c",
+    "shift-down", "shift-g", "shift-i", "shift-j", "shift-k", "shift-p", "shift-tab", "shift-u",
     "shift-up", "t", "tab", "u", "up", "v",
 ];
 
@@ -391,6 +405,11 @@ pub fn commands() -> Vec<Command> {
         cmd("Sync everything \u{2014} every folder", "cmd-alt-shift-n", Sync),
         cmd("Load older messages", "", LoadOlder),
         cmd("Filter: all / unread / flagged", "tab", CycleFilter),
+        cmd("Priority: show what needs you here", "p", TogglePriorityFilter),
+        cmd("Priority: mark or unmark this message", "shift-p", MarkPriority),
+        cmd("Quick reply: the first", "1", QuickReply1),
+        cmd("Quick reply: the second", "2", QuickReply2),
+        cmd("Quick reply: the third", "3", QuickReply3),
         cmd("Toggle read", "u", ToggleRead),
         cmd("Mark as read", "shift-i", MarkRead),
         cmd("Mark as unread", "shift-u", MarkUnread),

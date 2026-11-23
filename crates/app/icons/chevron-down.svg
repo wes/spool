@@ -1,0 +1,12 @@
+<!--
+  A folder's disclosure triangle while it is open: chevron-right.svg turned
+  a quarter. Its own file rather than a rotation, so both are drawn on the
+  pixel grid rather than one of them being resampled.
+-->
+<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M3.5 6 L8 10.5 L12.5 6"
+        stroke="#000"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

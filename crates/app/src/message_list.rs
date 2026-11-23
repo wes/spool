@@ -88,6 +88,10 @@ fn slim_row_width(list_width: f32) -> f32 {
 /// Gap between slim columns, matching the row's `gap_2p5`.
 const SLIM_GAP: f32 = 10.;
 
+/// The width the list header gives its count: enough for "000,000
+/// conversations" at the small text size, the widest it says.
+const COUNT_WIDTH: f32 = 124.;
+
 /// Names the scrollbar's hit strip so the thumb inside it can light up when
 /// the pointer is anywhere on the bar, which is a wider target than the thumb.
 const SCROLLBAR_GROUP: &str = "message-scrollbar";
@@ -155,6 +159,7 @@ impl Workspace {
             .border_color(theme.border)
             .child(self.render_list_header(theme, cx))
             .children(self.render_label_bar(theme, cx))
+            .children(self.render_follow_ups(theme, cx))
             .child(
                 div()
                     .key_context("MessageList")
@@ -397,6 +402,11 @@ impl Workspace {
             .border_color(theme.border)
             .child(
                 div()
+                    // A fixed width, so the buttons beside it stay where they
+                    // are as the number changes — which it does as soon as
+                    // one of them is clicked, and a button that moves out
+                    // from under the pointer cannot be clicked twice.
+                    .w(px(COUNT_WIDTH))
                     .flex_shrink()
                     .min_w_0()
                     .truncate()
@@ -414,13 +424,18 @@ impl Workspace {
             // Beside the count, in this order: what narrows the list sits
             // next to the number it changes.
             .child(self.render_flag_toggle(theme, cx))
+            .children(self.render_priority_toggle(theme, cx))
             .children(self.render_scan_switch(theme, cx))
             .child(div().flex_1())
             // An active filter shows itself here, and clicking clears it.
             // Cycling through the three lives on `tab` and in the menu, where
             // it cannot be hit by someone reaching for the sort control.
             // Flagged is left to the flag button, which already says so.
-            .children((!matches!(filter, crate::workspace::Filter::All | crate::workspace::Filter::Flagged)).then(|| {
+            .children((!matches!(
+                filter,
+                crate::workspace::Filter::All | crate::workspace::Filter::Flagged | crate::workspace::Filter::Priority
+            ))
+            .then(|| {
                 div()
                     .id("filter-chip")
                     .px_1p5()
@@ -586,6 +601,9 @@ impl Workspace {
                 crate::workspace::Filter::Unread => ("All caught up", "Nothing unread here"),
                 crate::workspace::Filter::Flagged => ("Nothing flagged", "Press f to flag"),
                 crate::workspace::Filter::All => ("Empty", "No messages in this mailbox"),
+                crate::workspace::Filter::Priority => {
+                    ("Nothing needs you", "New mail that does shows here, sorted as it arrives")
+                }
             }
         };
 
