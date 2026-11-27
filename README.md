@@ -8,7 +8,10 @@ HTML mail [as its sender laid it out](#rendering-html-mail).
 The question was: what would email feel like if Zed were an email client?
 This is a working answer to that, at a scale where the answer means something.
 
-![Spool, showing a demo mailbox](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
+  <img alt="Spool's window: two accounts in the sidebar, an inbox with a follow-up waiting above it, and a message the Priority sort marked as needing a reply, with three replies written ahead" src="docs/screenshot.png">
+</picture>
 
 **[Download Spool](https://github.com/wes/spool/releases/latest/download/Spool.dmg)**
 — macOS 13 or later, Apple silicon and Intel. Signed, notarized, and it
@@ -330,6 +333,39 @@ leaves you with an app you can hear but cannot see.
 Geometry is read once at quit rather than tracked per frame — polling the
 platform for a window rectangle at 120Hz to catch a value that changes when
 you drag would be wasteful. The cost is that a force-kill loses the last move.
+
+## Priority
+
+Off until it is turned on: **Settings → AI → Sort new mail by priority**. The
+AI chosen there — ChatGPT or Claude — reads new inbox mail as it syncs and
+decides whether it needs you, and what for. Mail somebody is waiting on an
+answer to, and mail that wants something done or known soon, gets a line above
+the message saying why in a dozen words. Newsletters, receipts and
+notifications stay where they were.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/priority-light.png">
+  <img alt="The Priority bar above a message: Needs a reply, why, and three replies written ahead, numbered 1 to 3" src="docs/priority.png" width="735">
+</picture>
+
+Mail that wants an answer comes with three replies already written: a yes, a
+no or not yet, and one asking for what you would need to decide. Click one, or
+press `1`, `2` or `3`, and it opens in an ordinary composer, addressed and
+quoted, to change and send. The model writes; Send is still a key you press.
+Where a reply would need a time or a price it was never told, it leaves a
+placeholder like `[time]` rather than inventing one.
+
+`p`, or the ★ above the list, narrows any mailbox to what needs you; `shift-p`
+puts a message in or takes it out, and the sort is told about that decision
+from then on. **Follow-up reminders** are a switch of their own in the same
+pane: sent mail that expected an answer and got none comes back above the list
+— after three days, unless the chip beside Send said otherwise — with a nudge
+written.
+
+What leaves the machine is said exactly: each new inbox message's sender,
+whether you were on To or Cc, its subject and its first 1,500 characters,
+twelve to a request. Mail from a mailing list, and your own, is sorted by rule
+and never sent. The first run reaches back three days, not through the archive.
 
 ## Clients
 
